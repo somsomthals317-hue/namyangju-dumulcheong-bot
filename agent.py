@@ -11,7 +11,7 @@ load_dotenv()
 
 from openai import OpenAI
 from state import (
-    get_profile_status, get_missing_profile_fields,
+    get_default_state, get_profile_status, get_missing_profile_fields,
     get_policy_needed_fields, update_profile, save_policy_answer, reset_task_context,
 )
 from prompts import (
@@ -103,6 +103,305 @@ def parse_json_response(text):
     return None
 
 
+VALID_ACTIONS = {
+    "SEARCH_POLICY", "FOLLOW_UP", "CHECK_ELIGIBILITY",
+    "SHOW_ALTERNATIVES", "CHANGE_TOPIC", "RESET",
+}
+VALID_TASKS = {"EXPLAIN", "RECOMMEND", "ELIGIBILITY"}
+VALID_FOLLOW_UP_FIELDS = {
+    "application_period", "application_method", "documents",
+    "benefit", "target", "conditions", "general", None,
+}
+
+
+def _clean_action_topics(value):
+    if not value:
+        return []
+    raw = value if isinstance(value, list) else [value]
+    normalized = normalize_interests(", ".join(str(item) for item in raw))
+    return [item.strip() for item in normalized.split(",") if item.strip()]
+
+
+def validate_action_payload(payload):
+    """GPT와 UI Action을 같은 보수적 Schema로 검증한다."""
+    if not isinstance(payload, dict):
+        return None
+    action = payload.get("action")
+    if action not in VALID_ACTIONS:
+        return None
+    raw_tasks = payload.get("tasks", [])
+    if not isinstance(raw_tasks, list):
+        raw_tasks = []
+    tasks = [task for task in ("EXPLAIN", "RECOMMEND", "ELIGIBILITY") if task in raw_tasks]
+    topic_values = _clean_action_topics(payload.get("topic"))
+    topic = topic_values[0] if topic_values else None
+    exclude_topics = _clean_action_topics(payload.get("exclude_topics"))
+    exclude_policy_mentions = payload.get("exclude_policy_mentions", [])
+    if not isinstance(exclude_policy_mentions, list):
+        exclude_policy_mentions = []
+    follow_up_field = payload.get("follow_up_field")
+    if follow_up_field not in VALID_FOLLOW_UP_FIELDS:
+        follow_up_field = None
+    confidence = payload.get("confidence")
+    if confidence not in {"high", "medium", "low"}:
+        confidence = "low"
+    return {
+        "action": action,
+        "tasks": tasks,
+        "topic": topic,
+        "policy_id": str(payload.get("policy_id") or "").strip() or None,
+        "policy_mention": str(payload.get("policy_mention") or "").strip() or None,
+        "exclude_topics": exclude_topics,
+        "exclude_policy_ids": [
+            str(item).strip()
+            for item in payload.get("exclude_policy_ids", [])
+            if str(item).strip()
+        ] if isinstance(payload.get("exclude_policy_ids", []), list) else [],
+        "exclude_policy_mentions": [
+            str(item).strip() for item in exclude_policy_mentions if str(item).strip()
+        ],
+        "follow_up_field": follow_up_field,
+        "use_previous_context": payload.get("use_previous_context") is True,
+        "confidence": confidence,
+        "workflow": payload.get("workflow") if isinstance(payload.get("workflow"), list) else [],
+    }
+
+
+def detect_navigation_action(state, message, bundles):
+    """전환·대안·후속 질문의 고위험 표현을 RAG 전에 Action으로 정규화한다."""
+    msg = (message or "").strip()
+    if not msg:
+        return None
+    compact = re.sub(r"\s+", "", msg.lower())
+    if re.search(r"처음부터|대화\s*초기화|전부\s*초기화|리셋", msg):
+        return validate_action_payload({
+            "action": "RESET", "tasks": [], "confidence": "high",
+        })
+
+    current_policy_id = state.get("current_policy_id") or state.get("focus_policy_id")
+    current_topic = state.get("current_topic") or state.get("interest_query")
+    mentioned_topics = _clean_action_topics(normalize_interests(msg))
+
+    # 특정 공식 정책명은 일반 분야 검색보다 우선한다.
+    exact_policy = resolve_policy_alias(msg) or _contains_exact_policy_name(bundles, msg)
+
+    if current_policy_id and re.search(r"신청\s*(?:기간|시기)|접수\s*기간|언제\s*신청", msg):
+        return validate_action_payload({
+            "action": "FOLLOW_UP",
+            "tasks": ["EXPLAIN"],
+            "follow_up_field": "application_period",
+            "use_previous_context": True,
+            "confidence": "high",
+        })
+    if current_policy_id and re.search(r"신청\s*(?:방법|어떻게)|접수\s*방법", msg):
+        return validate_action_payload({
+            "action": "FOLLOW_UP",
+            "tasks": ["EXPLAIN"],
+            "follow_up_field": "application_method",
+            "use_previous_context": True,
+            "confidence": "high",
+        })
+    if current_policy_id and re.search(r"제출\s*서류|필요\s*서류|준비\s*서류", msg):
+        return validate_action_payload({
+            "action": "FOLLOW_UP",
+            "tasks": ["EXPLAIN"],
+            "follow_up_field": "documents",
+            "use_previous_context": True,
+            "confidence": "high",
+        })
+    if current_policy_id and re.search(
+        r"신청\s*조건|자격|가능한지|신청\s*(?:할\s*)?수|지원\s*(?:받을\s*)?수",
+        msg,
+    ) and "자격증" not in msg:
+        return validate_action_payload({
+            "action": "CHECK_ELIGIBILITY",
+            "tasks": ["ELIGIBILITY"],
+            "policy_id": current_policy_id,
+            "policy_mention": "그 정책",
+            "use_previous_context": True,
+            "confidence": "high",
+        })
+
+    before, separator, after = msg.partition("말고")
+    before_topics = _clean_action_topics(normalize_interests(before)) if separator else []
+    after_topics = _clean_action_topics(normalize_interests(after)) if separator else []
+    alternative_cue = bool(re.search(
+        r"말고|다른\s*(?:정책|분야|것|거|것도|것은)?|"
+        r"(?:이거|그거|이것|그것)\s*말고|대안",
+        msg,
+    ))
+
+    if separator and after_topics:
+        new_topic = after_topics[0]
+        return validate_action_payload({
+            "action": "CHANGE_TOPIC",
+            "tasks": ["RECOMMEND"],
+            "topic": new_topic,
+            "exclude_topics": before_topics,
+            "use_previous_context": False,
+            "confidence": "high",
+        })
+
+    if alternative_cue:
+        exclude_topics = before_topics[:]
+        exclude_policy_ids = []
+        if re.search(r"(?:이거|그거|이것|그것)\s*말고", msg) and current_policy_id:
+            exclude_policy_ids.append(current_policy_id)
+        elif not exclude_topics and current_policy_id:
+            exclude_policy_ids.append(current_policy_id)
+        elif not exclude_topics and current_topic:
+            exclude_topics = _clean_action_topics(current_topic)
+        return validate_action_payload({
+            "action": "SHOW_ALTERNATIVES",
+            "tasks": ["RECOMMEND"],
+            "exclude_topics": exclude_topics,
+            "exclude_policy_ids": exclude_policy_ids,
+            "use_previous_context": True,
+            "confidence": "high",
+        })
+
+    # "취업 정책은?"처럼 현재 발화의 새 분야를 과거 주제보다 우선한다.
+    if mentioned_topics and not exact_policy and re.search(
+        r"정책\s*(?:은|는|있|알려|보여|찾아)|(?:쪽|분야)\s*(?:은|는|정책)",
+        msg,
+    ):
+        topic = mentioned_topics[0]
+        action = "CHANGE_TOPIC" if current_topic and topic not in _clean_action_topics(current_topic) else "SEARCH_POLICY"
+        return validate_action_payload({
+            "action": action,
+            "tasks": ["RECOMMEND"],
+            "topic": topic,
+            "use_previous_context": False,
+            "confidence": "high",
+        })
+    return None
+
+
+def _policy_id_for_action(action, bundles):
+    policy_id = action.get("policy_id")
+    if policy_id and any(bundle["policy_id"] == policy_id for bundle in bundles):
+        return policy_id
+    mention = action.get("policy_mention")
+    alias_id = resolve_policy_alias(mention) if mention else None
+    if alias_id and any(bundle["policy_id"] == alias_id for bundle in bundles):
+        return alias_id
+    if mention:
+        status, candidates = match_policy_candidates(bundles, mention)
+        if status == "UNIQUE":
+            return candidates[0]["policy_id"]
+    return None
+
+
+def apply_action_transition(state, action, bundles):
+    """Action에 따라 이전 State를 유지·제외·교체하고 실행 task를 반환한다."""
+    action = validate_action_payload(action)
+    if not action:
+        return [], [], None
+    kind = action["action"]
+    state["last_action"] = kind
+
+    if kind == "RESET":
+        clean = get_default_state()
+        state.clear()
+        state.update(clean)
+        return [], [], "대화를 초기화했어요. 정책 검색, 맞춤 추천, 자격 확인 중 무엇을 도와드릴까요?"
+
+    if kind == "FOLLOW_UP":
+        policy_id = _policy_id_for_action(action, bundles) or state.get("current_policy_id") or state.get("focus_policy_id")
+        if not policy_id:
+            state["active_clarify"] = "CLARIFY_POLICY"
+            state["pending_tasks"] = ["EXPLAIN"]
+            return ["EXPLAIN"], ["CLARIFY_POLICY"], None
+        state["current_policy_id"] = policy_id
+        state["focus_policy_id"] = policy_id
+        state["_follow_up_field"] = action.get("follow_up_field") or "general"
+        return ["EXPLAIN"], [], None
+
+    if kind == "CHECK_ELIGIBILITY":
+        policy_id = _policy_id_for_action(action, bundles) or state.get("current_policy_id") or state.get("focus_policy_id")
+        reset_task_context(state, keep_focus=True, keep_interest=True)
+        if policy_id:
+            state["current_policy_id"] = policy_id
+            state["focus_policy_id"] = policy_id
+            state["selected_policy_id"] = policy_id
+            state["_policy_mention"] = "그 정책"
+            return ["ELIGIBILITY"], [], None
+        return ["ELIGIBILITY"], ["CLARIFY_POLICY"], None
+
+    if kind == "SHOW_ALTERNATIVES":
+        previous_topic = state.get("current_topic") or state.get("interest_query")
+        previous_policy = state.get("current_policy_id") or state.get("focus_policy_id")
+        exclude_topics = list(action.get("exclude_topics") or [])
+        exclude_ids = list(action.get("exclude_policy_ids") or [])
+        if not exclude_topics and not exclude_ids:
+            if previous_policy:
+                exclude_ids.append(previous_policy)
+            elif previous_topic:
+                exclude_topics.extend(_clean_action_topics(previous_topic))
+        reset_task_context(state)
+        state["_exclude_topics"] = list(dict.fromkeys(exclude_topics))
+        state["_exclude_policy_ids"] = list(dict.fromkeys(exclude_ids))
+        # 특정 정책만 제외하면 같은 분야 대안을 우선하고, 분야를 제외하면 전체에서 찾는다.
+        next_topic = previous_topic if exclude_ids and previous_topic else "전체"
+        state["interest_query"] = next_topic or "전체"
+        state["current_topic"] = next_topic or "전체"
+        state["_skip_profile_check"] = True
+        state["_explore_mode"] = True
+        return ["RECOMMEND"], [], None
+
+    if kind in {"CHANGE_TOPIC", "SEARCH_POLICY"}:
+        topic = action.get("topic")
+        policy_id = _policy_id_for_action(action, bundles)
+        reset_task_context(state)
+        if topic:
+            state["interest_query"] = topic
+            state["current_topic"] = topic
+        if policy_id:
+            state["current_policy_id"] = policy_id
+            state["focus_policy_id"] = policy_id
+            state["_policy_mention"] = action.get("policy_mention")
+        if action.get("exclude_topics"):
+            state["_exclude_topics"] = action["exclude_topics"]
+        tasks = action.get("tasks") or (["EXPLAIN"] if policy_id else ["RECOMMEND"])
+        # 분야 정책 탐색은 개인 자격 판정이 아니라 목록 탐색으로 시작한다.
+        if "RECOMMEND" in tasks and topic:
+            state["_skip_profile_check"] = True
+            state["_explore_mode"] = True
+        clarifies = []
+        if "RECOMMEND" in tasks and not state.get("interest_query"):
+            clarifies.append("CLARIFY_PREFERENCE")
+        if ("EXPLAIN" in tasks or "ELIGIBILITY" in tasks) and not policy_id and not action.get("policy_mention"):
+            clarifies.append("CLARIFY_POLICY")
+        return tasks, clarifies, None
+
+    return action.get("tasks", []), [], None
+
+
+def run_policy_follow_up(state, bundles):
+    """현재 정책을 다시 검색하지 않고 저장된 Bundle의 요청 필드만 답한다."""
+    policy_id = state.get("current_policy_id") or state.get("focus_policy_id")
+    bundle = next((item for item in bundles if item["policy_id"] == policy_id), None)
+    if not bundle:
+        state["active_clarify"] = "CLARIFY_POLICY"
+        state["pending_tasks"] = ["EXPLAIN"]
+        return "어떤 정책을 말씀하시는지 정책명을 선택해주세요."
+    field = state.pop("_follow_up_field", "general")
+    labels = {
+        "application_period": ("신청기간", bundle.get("application_period") or "공지 확인 필요"),
+        "application_method": ("신청방법", bundle.get("application_method") or "공식 정책 페이지에서 확인해주세요."),
+        "documents": ("제출서류", bundle.get("documents") or "공식 모집공고에서 확인해주세요."),
+        "benefit": ("지원내용", bundle.get("benefit") or bundle.get("summary") or "공식 페이지에서 확인해주세요."),
+        "target": ("지원대상", bundle.get("main_target") or "공식 페이지에서 확인해주세요."),
+        "conditions": ("신청조건", bundle.get("main_target") or "자격 확인 기능에서 세부 조건을 확인해주세요."),
+    }
+    label, value = labels.get(field, ("정책 안내", bundle.get("summary") or bundle.get("benefit") or "공식 페이지에서 확인해주세요."))
+    lines = [f"📋 {bundle['policy_name']} {label}", "", f"- {value}"]
+    link = _official_policy_link(bundle.get("source"))
+    if link:
+        lines.extend(["", link])
+    return "\n".join(lines)
+
+
 def extract_explicit_age(text):
     """'만 나이가 24살', '만으로 24세', '만 24살'처럼 명시된 만 나이를 추출한다."""
     value = (text or "").strip()
@@ -136,7 +435,7 @@ def resume_after_age_update(state, age, collection, bundles):
     return f"만 나이 {age}세로 저장했어요. 정책 설명, 맞춤 추천, 자격 확인 중 무엇을 도와드릴까요?"
 
 
-def handle_turn(state, user_message, collection, bundles, ui_event=None):
+def handle_turn(state, user_message, collection, bundles, ui_event=None, input_action=None):
     """
     메인 턴 처리 함수
     Returns: (state, response_text)
