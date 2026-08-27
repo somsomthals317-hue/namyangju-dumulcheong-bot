@@ -209,10 +209,15 @@ def detect_navigation_action(state, message, bundles):
             "use_previous_context": True,
             "confidence": "high",
         })
-    if current_policy_id and re.search(
-        r"신청\s*조건|자격|가능한지|신청\s*(?:할\s*)?수|지원\s*(?:받을\s*)?수",
-        msg,
-    ) and "자격증" not in msg:
+    if (
+        current_policy_id
+        and re.search(
+            r"신청\s*조건|자격|가능한지|신청\s*(?:할\s*)?수|지원\s*(?:받을\s*)?수",
+            msg,
+        )
+        and "자격증" not in msg
+        and not re.search(r"말고|다른\s*(?:정책|분야|것|거|지원)?", msg)
+    ):
         return validate_action_payload({
             "action": "CHECK_ELIGIBILITY",
             "tasks": ["ELIGIBILITY"],
@@ -257,6 +262,11 @@ def detect_navigation_action(state, message, bundles):
             "use_previous_context": False,
             "confidence": "high",
         })
+
+    # 진행 중 카드에서 전환 동사와 새 작업 의미가 섞인 긴 문장은 Prompt A가
+    # Action을 의미적으로 판정하도록 넘긴다.
+    if state.get("active_clarify") and alternative_cue:
+        return None
 
     if alternative_cue:
         exclude_topics = before_topics[:]
