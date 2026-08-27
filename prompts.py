@@ -46,11 +46,11 @@ PROMPT_A_INTENT = """당신은 사용자 메시지를 분석하여 Intent와 Sta
     "rewritten_query": "사용자 메시지를 정책 검색/매칭에 적합하게 변환한 검색어. 구어체→공식용어, 핵심키워드만. 모든 task에 대해 항상 작성하세요.",
     "interest_query": "관심 분야 또는 null",
     "workflow": [
-        {
+        {{
             "task": "EXPLAIN|RECOMMEND|ELIGIBILITY",
             "policy_mention": "이 단계가 대상으로 하는 정책명 또는 null",
             "topic": "이 단계가 대상으로 하는 관심 분야 또는 null"
-        }
+        }}
     ],
     "profile_patch": {{
         "age": null 또는 정수,
