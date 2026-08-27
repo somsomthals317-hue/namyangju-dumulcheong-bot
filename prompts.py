@@ -32,6 +32,9 @@ PROMPT_A_INTENT = """당신은 사용자 메시지를 분석하여 Intent와 Sta
 
 다음 JSON 형식으로만 응답하세요:
 {{
+    "turn_kind": "CLARIFY_ANSWER" | "NEW_TASK" | "SWITCH_POLICY" | "CANCEL" | "SMALL_TALK",
+    "reuse_focus": true | false,
+    "confidence": "high" | "medium" | "low",
     "tasks": ["EXPLAIN" | "RECOMMEND" | "ELIGIBILITY" 중 해당하는 것들],
     "policy_mention": "사용자가 언급한 정책명 또는 null",
     "rewritten_query": "사용자 메시지를 정책 검색/매칭에 적합하게 변환한 검색어. 구어체→공식용어, 핵심키워드만. 모든 task에 대해 항상 작성하세요.",
@@ -50,6 +53,10 @@ PROMPT_A_INTENT = """당신은 사용자 메시지를 분석하여 Intent와 Sta
 
 규칙:
 - 복합 질문은 tasks에 여러 값을 넣으세요. 예: "이 정책 설명하고 가능한지 봐줘" → ["EXPLAIN", "ELIGIBILITY"]
+- 현재 카드 질문의 단순 답변이면 turn_kind는 CLARIFY_ANSWER입니다. 사용자가 질문을 취소하거나 다른 작업을 요청하면 NEW_TASK, 기존 정책을 배제하면 SWITCH_POLICY, 명시적으로 취소만 하면 CANCEL입니다.
+- reuse_focus는 사용자가 "이 정책", "그 정책", "방금 정책"처럼 명시적으로 직전 정책을 가리킬 때만 true입니다. 정책을 새로 말하거나 대상이 없거나 "말고/다른" 표현이 있으면 false입니다.
+- 자연어 표현이 다양해도 문장의 의미로 판단하세요. 단어 하나가 포함됐다는 이유만으로 이전 카드의 답변으로 분류하지 마세요.
+- confidence가 low이고 새 task의 정책 또는 관심 분야가 불명확하면 추측하지 말고 해당 clarify_reasons를 넣으세요.
 - "이거", "그 정책" 같은 표현은 focus_policy_id가 있으면 해당 정책을 가리킵니다.
 - 반대로 "이거 말고", "다른 정책", "자격 다른 거 확인", "정책을 바꾸고 싶어"는 기존 focus_policy_id를 가리키지 않습니다. 새 정책명이 없으면 policy_mention은 null, tasks는 요청한 작업(자격은 ELIGIBILITY), clarify_reasons에 CLARIFY_POLICY를 넣으세요.
 - 진행 중인 질문이 있어도 사용자가 완전한 문장으로 다른 정책·설명·추천·자격 요청을 하면 카드 답변이 아니라 새 Intent로 판단하세요.
