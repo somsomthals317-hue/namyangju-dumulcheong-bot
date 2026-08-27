@@ -242,6 +242,22 @@ def detect_navigation_action(state, message, bundles):
             "confidence": "high",
         })
 
+    alternative_eligibility = (
+        alternative_cue
+        and "자격증" not in msg
+        and bool(re.search(
+            r"자격|가능한지|되는지|신청\s*(?:할\s*)?수|지원\s*(?:받을\s*)?수",
+            msg,
+        ))
+    )
+    if alternative_eligibility:
+        return validate_action_payload({
+            "action": "CHECK_ELIGIBILITY",
+            "tasks": ["ELIGIBILITY"],
+            "use_previous_context": False,
+            "confidence": "high",
+        })
+
     if alternative_cue:
         exclude_topics = before_topics[:]
         exclude_policy_ids = []
@@ -318,8 +334,14 @@ def apply_action_transition(state, action, bundles):
         return ["EXPLAIN"], [], None
 
     if kind == "CHECK_ELIGIBILITY":
-        policy_id = _policy_id_for_action(action, bundles) or state.get("current_policy_id") or state.get("focus_policy_id")
-        reset_task_context(state, keep_focus=True, keep_interest=True)
+        policy_id = _policy_id_for_action(action, bundles)
+        if not policy_id and action.get("use_previous_context"):
+            policy_id = state.get("current_policy_id") or state.get("focus_policy_id")
+        reset_task_context(
+            state,
+            keep_focus=bool(policy_id),
+            keep_interest=action.get("use_previous_context") is True,
+        )
         if policy_id:
             state["current_policy_id"] = policy_id
             state["focus_policy_id"] = policy_id
