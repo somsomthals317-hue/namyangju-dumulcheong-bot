@@ -136,6 +136,10 @@ def public_state(state):
         "interest_query": state.get("interest_query"),
         "recommendation_mode": state.get("_last_recommendation_mode"),
         "eligibility_mode": state.get("_last_eligibility_mode"),
+        "current_topic": state.get("current_topic"),
+        "current_policy_id": state.get("current_policy_id"),
+        "last_result_policy_ids": state.get("last_result_policy_ids", []),
+        "last_action": state.get("last_action"),
     }
 
 
@@ -172,6 +176,7 @@ async def chat(request: Request):
     session_id = validate_session_id(body.get("session_id"))
     message = str(body.get("message") or "")
     ui_event = body.get("ui_event")
+    input_action = body.get("action")
     lock = get_session_lock(session_id)
 
     async with lock:
@@ -247,6 +252,7 @@ async def chat(request: Request):
                 collection,
                 bundles,
                 ui_event,
+                input_action,
             )
         sessions[session_id] = state
         session_last_seen[session_id] = time.monotonic()
