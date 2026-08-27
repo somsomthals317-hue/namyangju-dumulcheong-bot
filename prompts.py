@@ -1,6 +1,6 @@
 """
 두물청 - 프롬프트 정의
-Prompt A: Intent 분석 + State 추출
+Prompt A: Action + Intent + Workflow 분석
 Prompt B: EXPLAIN (정책 선택 + 설명 생성)
 Prompt C: RECOMMEND (25개 Bundle 판정)
 Prompt D: ELIGIBILITY (단일 정책 자격 판정)
@@ -32,13 +32,26 @@ PROMPT_A_INTENT = """당신은 사용자 메시지를 분석하여 Intent와 Sta
 
 다음 JSON 형식으로만 응답하세요:
 {{
+    "action": "SEARCH_POLICY" | "FOLLOW_UP" | "CHECK_ELIGIBILITY" | "SHOW_ALTERNATIVES" | "CHANGE_TOPIC" | "RESET",
     "turn_kind": "CLARIFY_ANSWER" | "NEW_TASK" | "SWITCH_POLICY" | "CANCEL" | "SMALL_TALK",
     "reuse_focus": true | false,
+    "use_previous_context": true | false,
     "confidence": "high" | "medium" | "low",
     "tasks": ["EXPLAIN" | "RECOMMEND" | "ELIGIBILITY" 중 해당하는 것들],
+    "topic": "취업|주거|창업|교육|복지|참여·문화|기본소득|농업|전체 또는 null",
+    "exclude_topics": ["제외할 표준 관심 분야"],
+    "exclude_policy_mentions": ["제외할 정책명 또는 지시어"],
+    "follow_up_field": "application_period|application_method|documents|benefit|target|conditions|general|null",
     "policy_mention": "사용자가 언급한 정책명 또는 null",
     "rewritten_query": "사용자 메시지를 정책 검색/매칭에 적합하게 변환한 검색어. 구어체→공식용어, 핵심키워드만. 모든 task에 대해 항상 작성하세요.",
     "interest_query": "관심 분야 또는 null",
+    "workflow": [
+        {{
+            "task": "EXPLAIN|RECOMMEND|ELIGIBILITY",
+            "policy_mention": "이 단계가 대상으로 하는 정책명 또는 null",
+            "topic": "이 단계가 대상으로 하는 관심 분야 또는 null"
+        }}
+    ],
     "profile_patch": {{
         "age": null 또는 정수,
         "residency": null 또는 "예"/"아니오",
@@ -52,7 +65,19 @@ PROMPT_A_INTENT = """당신은 사용자 메시지를 분석하여 Intent와 Sta
 }}
 
 규칙:
-- 복합 질문은 tasks에 여러 값을 넣으세요. 예: "이 정책 설명하고 가능한지 봐줘" → ["EXPLAIN", "ELIGIBILITY"]
+- Action은 작업 내용보다 먼저 판단하세요.
+- "농업 말고 다른 정책 없어?", "다른 것도 알려줘", "이거 말고 다른 거", "그거 말고", "다른 정책 추천해줘"는 SHOW_ALTERNATIVES입니다.
+- "농업 말고 취업 정책 알려줘"처럼 새 분야가 명시되면 CHANGE_TOPIC이고 topic은 취업, exclude_topics에는 농업을 넣으세요.
+- "취업 정책은?"처럼 현재 발화에 새 분야가 있으면 이전 분야보다 현재 발화를 우선하고 CHANGE_TOPIC으로 분류하세요.
+- "그 정책 신청 기간은?"처럼 현재 정책의 한 항목을 묻는 경우 FOLLOW_UP이며 use_previous_context=true, follow_up_field를 채우세요.
+- "신청 조건은?", "자격이 돼?"처럼 현재 정책의 신청 가능성을 묻는 경우 CHECK_ELIGIBILITY입니다.
+- "처음부터", "대화 초기화"는 RESET입니다.
+- SHOW_ALTERNATIVES는 이전 주제·정책을 답변 대상으로 재사용하지 말고 제외 조건으로만 사용합니다.
+- 복합 질문은 tasks와 workflow에 여러 값을 넣으세요. 예: "이 정책 설명하고 가능한지 봐줘" → tasks ["EXPLAIN", "ELIGIBILITY"].
+- workflow는 사용자 문장에 나온 실행 순서와 각 task의 정책·분야 대상을 보존해야 합니다.
+- "월세 정책 설명하고 기본소득 자격 확인"은 EXPLAIN의 policy_mention과 ELIGIBILITY의 policy_mention을 서로 다르게 기록하세요.
+- 추천과 자격을 함께 요청했지만 자격 대상 정책이 없으면 ELIGIBILITY의 policy_mention을 null로 두세요. 임의 정책을 고르지 마세요.
+- 버튼 입력은 이 Prompt를 호출하지 않고 같은 Action Schema를 코드에서 직접 생성합니다.
 - 현재 카드 질문의 단순 답변이면 turn_kind는 CLARIFY_ANSWER입니다. 사용자가 질문을 취소하거나 다른 작업을 요청하면 NEW_TASK, 기존 정책을 배제하면 SWITCH_POLICY, 명시적으로 취소만 하면 CANCEL입니다.
 - reuse_focus는 사용자가 "이 정책", "그 정책", "방금 정책"처럼 명시적으로 직전 정책을 가리킬 때만 true입니다. 정책을 새로 말하거나 대상이 없거나 "말고/다른" 표현이 있으면 false입니다.
 - 자연어 표현이 다양해도 문장의 의미로 판단하세요. 단어 하나가 포함됐다는 이유만으로 이전 카드의 답변으로 분류하지 마세요.

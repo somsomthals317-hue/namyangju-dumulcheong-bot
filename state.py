@@ -20,8 +20,14 @@ def get_default_state():
         },
         # 관심 분야
         "interest_query": None,
-        # 현재 포커스된 정책
+        # 현재 주제와 정책. 기존 focus 필드는 하위 호환용으로 함께 유지
+        "current_topic": None,
+        "current_policy_id": None,
         "focus_policy_id": None,
+        # 직전 검색·추천 결과와 현재 실행 중인 멀티쿼리
+        "last_result_policy_ids": [],
+        "active_workflow": None,
+        "last_action": None,
         # 자격확인 중인 정책
         "selected_policy_id": None,
         # 대화 메시지 기록
@@ -98,6 +104,11 @@ TASK_TRANSIENT_KEYS = (
     "_intent_turn_kind",
     "_intent_reuse_focus",
     "_intent_confidence",
+    "_intent_workflow",
+    "_normalized_action",
+    "_exclude_topics",
+    "_exclude_policy_ids",
+    "_follow_up_field",
 )
 
 
@@ -107,12 +118,16 @@ def reset_task_context(state, keep_focus=False, keep_interest=False):
     state["pending_tasks"] = []
     state["selected_policy_id"] = None
     state["resume_step"] = None
+    state["active_workflow"] = None
+    state["last_result_policy_ids"] = []
     for key in TASK_TRANSIENT_KEYS:
         state.pop(key, None)
     if not keep_focus:
         state["focus_policy_id"] = None
+        state["current_policy_id"] = None
     if not keep_interest:
         state["interest_query"] = None
+        state["current_topic"] = None
     return state
 
 def update_profile(state, patch):
