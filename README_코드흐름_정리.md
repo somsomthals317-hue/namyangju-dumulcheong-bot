@@ -34,6 +34,46 @@
 6. FastAPI는 세션별 잠금, GPT 작업 스레드, 동시 실행 상한, 세션 TTL·상한, 요청 timeout, `/healthz`를 사용합니다.
 7. GitHub Actions가 Python 컴파일, Intent·State·32개 데이터 계약 회귀 테스트, Frontend JavaScript 문법 검사를 자동 실행합니다.
 
+
+### Action 정규화와 복합 Workflow (최종 구조)
+
+자연어와 버튼은 이제 서로 다른 분기에서 답을 만들지 않습니다.
+
+```text
+사용자 입력 또는 버튼
+→ Action / Intent 분석
+→ State Transition
+→ task별 대상이 보존된 Workflow 생성
+→ 정책 검색·추천·자격 Tool 실행
+→ 정보가 부족하면 Workflow를 멈추고 카드 표시
+→ 답변 입력 후 같은 지점부터 재개
+→ 모든 task가 끝났을 때 결과 결합
+```
+
+공통 Action은 다음과 같습니다.
+
+| Action | 의미 | 이전 State 처리 |
+|---|---|---|
+| `SEARCH_POLICY` | 새 정책 검색 | 새 대상이 있으면 현재 발화를 우선 |
+| `FOLLOW_UP` | 직전 단일 정책의 기간·방법·서류 질문 | `current_policy_id` 유지 |
+| `CHECK_ELIGIBILITY` | 특정 정책 자격 확인 | 명시적 대상 또는 명시적 지시어일 때만 이전 정책 사용 |
+| `SHOW_ALTERNATIVES` | 지금 보던 정책·분야가 아닌 대안 | 직전 대상은 제외 조건으로만 사용 |
+| `CHANGE_TOPIC` | 농업에서 취업처럼 분야 전환 | 기존 topic/policy를 새 주제로 교체 |
+| `RESET` | 처음부터 다시 시작 | task 관련 State 전체 초기화, 저장 Profile은 기본 초기화 규칙 적용 |
+
+Prompt A는 Intent와 Action을 따로 두 번 호출하지 않습니다. 한 번의 JSON 응답에서 `action`, `tasks`, `workflow`, 각 step의 `policy_mention/topic`을 함께 받으며, 코드는 허용된 값만 통과시킵니다. 버튼은 GPT를 호출하지 않고 같은 Action Schema를 직접 만들어 동일한 Handler로 보냅니다.
+
+복합 요청의 안전 규칙:
+
+- “월세 정책 설명하고 기본소득 자격 확인”처럼 task별 대상이 다르면 각 step의 정책명을 따로 보존합니다.
+- 설명+자격에서 자격 질문이 필요하면 설명 결과를 내부에 보관하고, 자격 확인이 끝난 뒤 두 결과를 한 번에 보여줍니다.
+- 추천+자격에서 자격 대상이 명시되지 않으면 추천 결과를 보여준 뒤 사용자가 정책을 선택하게 합니다. 추천 1위를 자격 대상으로 임의 선택하지 않습니다.
+- 추가 Profile·정책별 질문이 여러 번 생겨도 `active_workflow.index`에서 멈추고 같은 step을 재실행합니다.
+- “다른 정책 자격 확인”은 직전 정책을 재사용하지 않고 정책 선택 화면으로 이동합니다.
+- “그 정책 신청 기간은?”은 새 검색이 아니라 직전 단일 정책의 `FOLLOW_UP`으로 처리합니다.
+
+현재 자동 회귀 검사는 기존 Intent/State/Data 계약 16개와 Action/Workflow 7개, 총 23개를 실행하며 Python 컴파일과 Frontend JavaScript 문법도 함께 확인합니다.
+
 ---
 
 ## 2. 최종 파일 구조
