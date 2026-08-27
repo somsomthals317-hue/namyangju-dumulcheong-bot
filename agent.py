@@ -218,7 +218,10 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None):
         # 2. Active Clarify에 대한 답변인지 확인
         #    단, 명확한 새 task 요청이면 Clarify를 취소하고 새 작업으로 전환
         if state["active_clarify"]:
-            if is_explicit_new_request(user_message, state["active_clarify"]):
+            if (
+                is_explicit_new_request(user_message, state["active_clarify"])
+                or _is_other_policy_switch_request(user_message)
+            ):
                 state["active_clarify"] = None
                 state["pending_tasks"] = []
                 state.pop("_active_additional_q", None)
@@ -233,7 +236,16 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None):
         tasks, clarify_reasons = None, []
         msg = user_message.strip() if user_message else ""
         
-        if _is_multi_interest_eligibility_request(msg) and not _contains_exact_policy_name(bundles, msg):
+        if _is_other_policy_switch_request(msg):
+            # 기존 정책을 명시적으로 배제하면 예전 focus를 재사용하지 않는다.
+            state["focus_policy_id"] = None
+            state["selected_policy_id"] = None
+            state["_policy_mention"] = None
+            state["_rewritten_query"] = None
+            state.pop("_policy_candidates", None)
+            tasks = ["ELIGIBILITY"]
+            clarify_reasons = ["CLARIFY_POLICY"]
+        elif _is_multi_interest_eligibility_request(msg) and not _contains_exact_policy_name(bundles, msg):
             # "기본소득과 농업 자격확인"처럼 여러 분야를 한 번에 말하면
             # 한 정책을 임의로 고르지 않는다. 관련 정책 후보를 보여주고
             # 사용자가 실제로 판정할 단일 정책을 선택하게 한다.
@@ -298,7 +310,8 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None):
             resolve_policy_alias(msg)
             and not _is_explicit_recommend_request(msg)
             and not re.search(
-                r"자격\s*(?:확인|봐|검토)|가능한지|"
+                r"자격\s*(?:이\s*)?(?:확인|봐|검토|되|돼|있)|"
+                r"가능한지|되는지\s*(?:안\s*되는지)?|"
                 r"참여\s*(?:할\s*)?(?:수\s*있|가능)|"
                 r"신청\s*(?:할\s*)?(?:수\s*있|가능)|"
                 r"지원\s*(?:받을\s*수\s*있|가능)",
@@ -353,7 +366,8 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None):
         msg_lower = user_message.lower() if user_message else ""
         is_eligibility_request = False
         eligibility_pattern = re.search(
-            r"자격\s*확인|가능한지|나도\s*가능|"
+            r"자격\s*(?:이\s*)?(?:확인|되|돼|있)|"
+            r"가능한지|되는지\s*(?:안\s*되는지)?|나도\s*가능|"
             r"참여\s*(?:할\s*)?(?:수\s*있|가능)|"
             r"신청\s*(?:할\s*)?(?:수\s*있|가능)|"
             r"지원\s*(?:받을\s*수\s*있|가능)|해당되는지|대상인지",
@@ -371,6 +385,15 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None):
                     tasks.append("ELIGIBILITY")
             else:
                 tasks = ["ELIGIBILITY"]
+            # GPT가 축약 정책명을 놓쳐도 공식 별칭 사전으로 대상 정책을 확정한다.
+            if not state.get("_policy_mention"):
+                alias_policy_id = resolve_policy_alias(user_message)
+                alias_bundle = next(
+                    (bundle for bundle in bundles if bundle["policy_id"] == alias_policy_id),
+                    None,
+                )
+                if alias_bundle:
+                    state["_policy_mention"] = alias_bundle["policy_name"]
             if any(ref in user_message for ref in ["나도 가능", "저도 가능", "내가 가능", "나도 되", "저도 되", "이 정책 가능", "그 정책 가능"]):
                 state["_policy_mention"] = user_message
             for suffix in [
@@ -2217,6 +2240,7 @@ def _extract_policy_mention(message):
 # Clarify 중에도 새 작업으로 전환시키는 명시적 요청 패턴
 NEW_REQUEST_PATTERNS = [
     "자격 확인해줘", "자격확인해줘", "자격 확인해 줘", "자격이 있는지",
+    "자격 되는지", "자격되는지", "자격이 되는지", "되는지 안되는지",
     "정책에 대해 알려줘", "설명해줘", "설명해 줘", "알려줘",
     "추천해줘", "추천해 줘", "추천 받고 싶", "추천받고 싶",
 ]
@@ -2242,6 +2266,13 @@ def is_explicit_new_request(user_message, active_clarify):
     if ":" in msg and "|" in msg:
         return False
 
+    # 카드 진행 중에도 사용자가 정책/작업을 바꾸는 문장을 말하면
+    # 입력값으로 소비하지 않고 새 Intent 분석으로 보낸다.
+    has_switch_cue = bool(re.search(r"말고|다른\s*(?:정책|거|것)|바꾸|새로운\s*정책", msg))
+    has_task_cue = bool(re.search(r"자격|정책|추천|설명|알려|신청|지원", msg))
+    if has_switch_cue and has_task_cue:
+        return True
+
     # CLARIFY_POLICY 중에는 정책명만 입력하는 게 정상 답변이므로,
     # 동사 없는 정책명은 답변으로, 설명·추천·자격 동사가 있으면 새 요청으로 본다.
     if active_clarify == "CLARIFY_POLICY":
@@ -2252,6 +2283,23 @@ def is_explicit_new_request(user_message, active_clarify):
     # CLARIFY_PROFILE 중에는 Profile 관련 자연어 답변일 수 있으므로
     # 명시적 task 동사가 있을 때만 새 요청으로 본다.
     return any(p in msg for p in NEW_REQUEST_PATTERNS)
+
+
+def _is_other_policy_switch_request(message):
+    """직전 focus를 배제하고 다른 정책 자격을 선택하려는 문장."""
+    msg = (message or "").strip()
+    if not msg:
+        return False
+    has_switch = bool(re.search(
+        r"말고\s*다른|다른\s*(?:정책|거|것)|"
+        r"자격\s*다른\s*(?:거|것)|정책\s*바꾸|새로운\s*정책",
+        msg,
+    ))
+    has_eligibility = bool(re.search(
+        r"자격|가능|되는지|신청|지원\s*받",
+        msg,
+    ))
+    return has_switch and has_eligibility
 
 
 def normalize_interests(raw):
