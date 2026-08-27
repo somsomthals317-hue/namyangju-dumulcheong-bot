@@ -21,7 +21,10 @@
     "category": "청년일자리",
     "policy_name": "지역주도형 청년일자리사업",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "취업"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-002",
@@ -45,7 +48,10 @@
     "category": "청년일자리",
     "policy_name": "일자리카페",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "취업"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-003",
@@ -69,7 +75,10 @@
     "category": "청년일자리",
     "policy_name": "취업성공 프로젝트",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "취업"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-004",
@@ -93,7 +102,11 @@
     "category": "청년일자리",
     "policy_name": "경기청년 역량강화 기회지원사업(응시료지원)",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "취업",
+      "교육"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-005",
@@ -117,7 +130,10 @@
     "category": "청년일자리",
     "policy_name": "면접준비 청년 헤어스타일링 지원",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "취업"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-006",
@@ -141,7 +157,11 @@
     "category": "청년일자리",
     "policy_name": "말산업 청년인턴취업지원",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "취업",
+      "농업"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-007",
@@ -165,7 +185,11 @@
     "category": "청년일자리",
     "policy_name": "청년 행정체험 연수(구 대학생 시정업무체험)",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "취업",
+      "교육"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-008",
@@ -189,7 +213,10 @@
     "category": "청년일자리",
     "policy_name": "남양주형 청년 인재 플랫폼(정약용 후예)",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "취업"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-009",
@@ -213,7 +240,11 @@
     "category": "청년일자리",
     "policy_name": "청년성장 프로젝트(청년꿈틀)",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "취업",
+      "복지"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-010",
@@ -237,7 +268,11 @@
     "category": "청년복지",
     "policy_name": "청년기본소득",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "기본소득",
+      "복지"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-011",
@@ -261,7 +296,11 @@
     ],
     "category": "청년복지",
     "policy_name": "청년월세 지원사업",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "주거",
+      "복지"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-012",
@@ -285,7 +324,10 @@
     "category": "청년복지",
     "policy_name": "청년내일저축계좌",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "복지"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-013",
@@ -309,7 +351,11 @@
       "미혼청년"
     ],
     "category": "청년복지",
-    "policy_name": "청년 주거급여"
+    "policy_name": "청년 주거급여",
+    "recommendation_interests": [
+      "주거",
+      "복지"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-014",
@@ -333,7 +379,10 @@
     "category": "청년복지",
     "policy_name": "청년마음건강센터",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "복지"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-015",
@@ -357,7 +406,10 @@
     "category": "청년복지",
     "policy_name": "청년정신건강증진사업",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "복지"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-016",
@@ -381,7 +433,10 @@
     "category": "청년복지",
     "policy_name": "입영지원금 지원",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "복지"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-017",
@@ -405,7 +460,11 @@
     "category": "청년복지",
     "policy_name": "청년농업인 영농정착 지원",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "농업",
+      "복지"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-018",
@@ -429,7 +488,12 @@
     "category": "청년복지",
     "policy_name": "농업인자녀 대학생 학자금 이자지원",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "농업",
+      "교육",
+      "복지"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-019",
@@ -453,7 +517,10 @@
     "category": "청년교육",
     "policy_name": "청춘야학당 교육 프로그램",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "교육"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-020",
@@ -477,7 +544,11 @@
     "category": "청년교육",
     "policy_name": "청년창업 교육프로그램",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "창업",
+      "교육"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-021",
@@ -501,7 +572,11 @@
     "category": "청년교육",
     "policy_name": "청년창업 컨설팅",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "창업",
+      "교육"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-022",
@@ -525,7 +600,10 @@
     "category": "참여·문화",
     "policy_name": "청년 참여·문화 사업",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "참여·문화"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-023",
@@ -549,7 +627,10 @@
     "category": "참여·문화",
     "policy_name": "청년꽃간",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "참여·문화"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-024",
@@ -573,7 +654,11 @@
     "category": "참여·문화",
     "policy_name": "대학생 플래너즈",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "참여·문화",
+      "교육"
+    ]
   },
   {
     "policy_id": "NYJ-YOUTH-025",
@@ -597,7 +682,10 @@
     "category": "참여·문화",
     "policy_name": "청년예술인 지원",
     "housing_condition": "해당없음",
-    "marriage_condition": "해당없음"
+    "marriage_condition": "해당없음",
+    "recommendation_interests": [
+      "참여·문화"
+    ]
   },
   {
     "policy_id": "NYJ-EXPLAIN-001",
