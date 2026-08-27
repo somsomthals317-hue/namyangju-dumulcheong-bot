@@ -86,6 +86,38 @@ class ActionNormalizationTests(unittest.TestCase):
             self.assertEqual(natural_state.get(key), button_state.get(key))
 
 
+    def test_other_eligibility_clears_stale_policy_and_requires_choice(self):
+        state = get_default_state()
+        state["current_policy_id"] = "AGRI-1"
+        state["focus_policy_id"] = "AGRI-1"
+        state["selected_policy_id"] = "AGRI-1"
+
+        next_state, response = agent.handle_turn(
+            state,
+            "그거 말고 다른 정책 자격을 확인하고 싶어",
+            None,
+            BUNDLES,
+        )
+
+        self.assertIsNone(next_state["current_policy_id"])
+        self.assertIsNone(next_state["focus_policy_id"])
+        self.assertIsNone(next_state["selected_policy_id"])
+        self.assertEqual(next_state["active_clarify"], "CLARIFY_POLICY")
+        self.assertIn("어떤 정책", response)
+
+    def test_follow_up_returns_current_policy_period_without_rag(self):
+        action = agent.detect_navigation_action(
+            self.state, "그 정책 신청 기간은?", BUNDLES
+        )
+        agent.apply_action_transition(self.state, action, BUNDLES)
+        response = agent.run_policy_follow_up(self.state, BUNDLES)
+
+        self.assertIn("청년농업인 영농정착 지원", response)
+        self.assertIn("신청기간", response)
+        self.assertIn("1월", response)
+        self.assertIn("https://example.com/agri", response)
+
+
 class WorkflowTests(unittest.TestCase):
     def test_explanation_is_held_until_eligibility_finishes(self):
         state = get_default_state()
