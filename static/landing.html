@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="남양주시 청년정책을 설명하고, 내 조건에 맞는 정책 추천과 자격 확인을 돕는 AI 상담 서비스 두물청입니다.">
+    <title>두물청 | 남양주시 청년정책 AI 상담사</title>
+    <style>
+        :root {
+            --navy: #173f5f;
+            --blue: #1a5276;
+            --green: #1e8c6e;
+            --mint: #dff3ec;
+            --paper: #fbfaf5;
+            --ink: #24343d;
+            --muted: #65757e;
+            --line: rgba(23, 63, 95, 0.12);
+            --shadow: 0 24px 70px rgba(23, 63, 95, 0.13);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            color: var(--ink);
+            background: var(--paper);
+            font-family: Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", "Segoe UI", sans-serif;
+            line-height: 1.65;
+            overflow-x: hidden;
+        }
+        a { color: inherit; text-decoration: none; }
+        button, a { -webkit-tap-highlight-color: transparent; }
+
+        .site-header {
+            position: fixed; inset: 0 0 auto; z-index: 20;
+            background: rgba(251, 250, 245, 0.88);
+            border-bottom: 1px solid rgba(23, 63, 95, 0.08);
+            backdrop-filter: blur(16px);
+        }
+        .nav {
+            width: min(1120px, calc(100% - 40px)); height: 72px; margin: 0 auto;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .brand { display: inline-flex; align-items: center; gap: 11px; font-weight: 800; color: var(--navy); }
+        .brand img { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(30,140,110,.35); }
+        .brand span { font-size: 20px; letter-spacing: -.04em; }
+        .nav-links { display: flex; align-items: center; gap: 30px; color: #53636c; font-size: 14px; font-weight: 650; }
+        .nav-links a:hover { color: var(--green); }
+        .nav-cta, .primary-cta {
+            display: inline-flex; align-items: center; justify-content: center;
+            color: white !important; background: linear-gradient(135deg, var(--blue), var(--green));
+            border-radius: 999px; font-weight: 750; box-shadow: 0 10px 24px rgba(30,140,110,.20);
+            transition: transform .2s ease, box-shadow .2s ease;
+        }
+        .nav-cta { min-height: 42px; padding: 0 20px; }
+        .nav-cta:hover, .primary-cta:hover { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(30,140,110,.28); }
+
+        .hero {
+            position: relative; min-height: 760px; padding: 148px 0 90px;
+            display: grid; place-items: center; overflow: hidden;
+            background:
+                linear-gradient(90deg, rgba(251,250,245,.97) 0%, rgba(244,249,246,.90) 49%, rgba(239,247,247,.76) 100%),
+                url('/static/dumool_watercolor_background.png') center 59% / cover no-repeat;
+        }
+        .hero::after {
+            content: ""; position: absolute; width: 540px; height: 540px; right: -180px; top: 70px;
+            border-radius: 50%; background: rgba(30,140,110,.08); filter: blur(2px);
+        }
+        .hero-inner {
+            position: relative; z-index: 2; width: min(1120px, calc(100% - 40px));
+            display: grid; grid-template-columns: 1.02fr .98fr; align-items: center; gap: 74px;
+        }
+        .eyebrow {
+            display: inline-flex; align-items: center; gap: 9px; padding: 8px 14px;
+            border: 1px solid rgba(30,140,110,.25); border-radius: 999px;
+            background: rgba(255,255,255,.66); color: var(--green); font-size: 13px; font-weight: 800;
+        }
+        .eyebrow::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+        .hero h1 {
+            margin: 24px 0 22px; color: var(--navy); font-size: clamp(42px, 5.4vw, 68px);
+            line-height: 1.17; letter-spacing: -.065em; word-break: keep-all;
+        }
+        .hero h1 em { color: var(--green); font-style: normal; }
+        .hero-copy { max-width: 560px; color: var(--muted); font-size: 18px; word-break: keep-all; }
+        .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 34px; }
+        .primary-cta { min-height: 56px; padding: 0 28px; font-size: 16px; }
+        .secondary-cta {
+            min-height: 56px; padding: 0 26px; display: inline-flex; align-items: center; justify-content: center;
+            border: 1px solid rgba(23,63,95,.19); border-radius: 999px; background: rgba(255,255,255,.72);
+            color: var(--navy); font-size: 15px; font-weight: 750;
+        }
+        .service-notes { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 28px; color: #60717b; font-size: 13px; }
+        .service-notes span { display: inline-flex; align-items: center; gap: 7px; }
+        .service-notes span::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
+
+        .hero-visual { position: relative; min-height: 470px; display: grid; place-items: center; }
+        .watercolor-disc {
+            position: absolute; width: 420px; height: 420px; border-radius: 50%;
+            background:
+                linear-gradient(rgba(238,248,244,.48), rgba(232,244,248,.58)),
+                url('/static/dumool_watercolor_background.png') center 58% / cover;
+            border: 1px solid rgba(30,140,110,.14); box-shadow: var(--shadow);
+        }
+        .boat-mascot {
+            position: relative; z-index: 2; width: min(520px, 105%); height: auto;
+            filter: drop-shadow(0 18px 20px rgba(23,63,95,.15));
+            animation: float 5.5s ease-in-out infinite;
+        }
+        .mini-card {
+            position: absolute; z-index: 3; right: -12px; bottom: 22px; width: 245px; padding: 18px;
+            border: 1px solid rgba(23,63,95,.10); border-radius: 20px; background: rgba(255,255,255,.90);
+            box-shadow: 0 18px 42px rgba(23,63,95,.14); backdrop-filter: blur(10px);
+        }
+        .mini-card strong { display: block; margin-bottom: 8px; color: var(--navy); font-size: 14px; }
+        .mini-card p { color: var(--muted); font-size: 12px; line-height: 1.6; }
+        @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
+
+        .section { padding: 105px 0; }
+        .section-inner { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
+        .section-heading { max-width: 680px; margin-bottom: 48px; }
+        .kicker { color: var(--green); font-size: 13px; font-weight: 850; letter-spacing: .08em; }
+        .section h2 { margin-top: 10px; color: var(--navy); font-size: clamp(30px, 4vw, 46px); line-height: 1.25; letter-spacing: -.045em; word-break: keep-all; }
+        .section-heading p { margin-top: 16px; color: var(--muted); font-size: 16px; word-break: keep-all; }
+
+        .features { background: #fff; }
+        .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        .feature-card {
+            min-height: 280px; padding: 34px 30px; border: 1px solid var(--line); border-radius: 26px;
+            background: linear-gradient(155deg, #fff 0%, #f7fbfa 100%); transition: transform .2s ease, box-shadow .2s ease;
+        }
+        .feature-card:hover { transform: translateY(-5px); box-shadow: 0 18px 44px rgba(23,63,95,.10); }
+        .feature-number {
+            width: 48px; height: 48px; display: grid; place-items: center; border-radius: 15px;
+            color: var(--green); background: var(--mint); font-size: 13px; font-weight: 900;
+        }
+        .feature-card h3 { margin: 28px 0 12px; color: var(--navy); font-size: 22px; letter-spacing: -.025em; }
+        .feature-card p { color: var(--muted); font-size: 15px; word-break: keep-all; }
+
+        .how { position: relative; background: #f3f8f6; }
+        .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border: 1px solid var(--line); border-radius: 28px; overflow: hidden; background: rgba(255,255,255,.76); }
+        .step { position: relative; padding: 38px 34px; }
+        .step + .step { border-left: 1px solid var(--line); }
+        .step b { display: block; color: var(--green); font-size: 12px; letter-spacing: .12em; }
+        .step h3 { margin: 13px 0 9px; color: var(--navy); font-size: 20px; }
+        .step p { color: var(--muted); font-size: 14px; word-break: keep-all; }
+
+        .questions { background: var(--navy); color: white; overflow: hidden; }
+        .questions .section-inner { display: grid; grid-template-columns: .8fr 1.2fr; gap: 80px; align-items: center; }
+        .questions .kicker { color: #8ce0c5; }
+        .questions h2 { color: white; }
+        .questions-copy { margin-top: 16px; color: rgba(255,255,255,.66); }
+        .question-list { display: grid; gap: 12px; }
+        .question-item {
+            padding: 17px 21px; border: 1px solid rgba(255,255,255,.13); border-radius: 16px;
+            background: rgba(255,255,255,.075); color: rgba(255,255,255,.92); font-size: 15px;
+        }
+
+        .final-cta { padding: 100px 0; text-align: center; background:
+            linear-gradient(rgba(251,250,245,.89), rgba(251,250,245,.94)),
+            url('/static/dumool_watercolor_background.png') center 60% / cover;
+        }
+        .final-cta h2 { margin: 0 auto 16px; max-width: 720px; }
+        .final-cta p { margin-bottom: 30px; color: var(--muted); }
+        .notice { margin-top: 22px; color: #78878f; font-size: 12px; }
+
+        footer { padding: 26px 0; border-top: 1px solid var(--line); background: #fff; }
+        .footer-inner { width: min(1120px, calc(100% - 40px)); margin: 0 auto; display: flex; justify-content: space-between; gap: 20px; color: #7b8990; font-size: 12px; }
+
+        @media (max-width: 860px) {
+            .nav-links a:not(.nav-cta) { display: none; }
+            .hero { min-height: auto; padding: 126px 0 70px; }
+            .hero-inner { grid-template-columns: 1fr; gap: 42px; }
+            .hero-copy { font-size: 16px; }
+            .hero-visual { min-height: 390px; }
+            .watercolor-disc { width: 350px; height: 350px; }
+            .boat-mascot { width: min(460px, 100%); }
+            .mini-card { right: 0; }
+            .feature-grid { grid-template-columns: 1fr; }
+            .feature-card { min-height: auto; }
+            .steps { grid-template-columns: 1fr; }
+            .step + .step { border-left: none; border-top: 1px solid var(--line); }
+            .questions .section-inner { grid-template-columns: 1fr; gap: 38px; }
+        }
+        @media (max-width: 520px) {
+            .nav { width: min(100% - 28px, 1120px); height: 64px; }
+            .brand img { width: 36px; height: 36px; }
+            .brand span { font-size: 18px; }
+            .nav-cta { min-height: 38px; padding: 0 15px; font-size: 12px; }
+            .hero-inner, .section-inner, .footer-inner { width: min(100% - 32px, 1120px); }
+            .hero { padding-top: 112px; }
+            .hero h1 { font-size: 40px; }
+            .hero-actions { flex-direction: column; }
+            .primary-cta, .secondary-cta { width: 100%; }
+            .hero-visual { min-height: 320px; }
+            .watercolor-disc { width: 290px; height: 290px; }
+            .mini-card { width: 205px; padding: 14px; bottom: -5px; }
+            .section { padding: 78px 0; }
+            .feature-card { padding: 28px 24px; }
+            .footer-inner { flex-direction: column; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            html { scroll-behavior: auto; }
+            .boat-mascot { animation: none; }
+            .nav-cta, .primary-cta, .feature-card { transition: none; }
+        }
+    </style>
+</head>
+<body>
+    <header class="site-header">
+        <nav class="nav" aria-label="주요 메뉴">
+            <a class="brand" href="http://localhost:8000/landing" aria-label="두물청 서비스 소개 홈">
+                <img src="/static/profile_jeong_yakyong.png" alt="">
+                <span>두물청</span>
+            </a>
+            <div class="nav-links">
+                <a href="#features">주요 기능</a>
+                <a href="#how">이용 방법</a>
+                <a class="nav-cta" href="http://localhost:8000/">상담 시작하기</a>
+            </div>
+        </nav>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="hero-inner">
+                <div>
+                    <span class="eyebrow">남양주시 청년정책 AI 상담사</span>
+                    <h1>청년정책은 쉽게,<br><em>내게 맞는 기회</em>는 가까이</h1>
+                    <p class="hero-copy">두물청은 흩어진 남양주시 청년정책을 이해하기 쉽게 설명하고, 관심 분야와 현재 조건에 맞는 정책 탐색을 도와드립니다.</p>
+                    <div class="hero-actions">
+                        <a class="primary-cta" href="http://localhost:8000/">두물청에게 물어보기</a>
+                        <a class="secondary-cta" href="#features">서비스 알아보기</a>
+                    </div>
+                    <div class="service-notes" aria-label="서비스 특징">
+                        <span>남양주시 정책 자료 기반</span>
+                        <span>모바일·PC 이용 가능</span>
+                    </div>
+                </div>
+                <div class="hero-visual" aria-label="정약용 선생님과 새 친구가 배를 타고 안내하는 모습">
+                    <div class="watercolor-disc"></div>
+                    <img class="boat-mascot" src="/static/floating_teacher_bird_boat_cutout.png" alt="배를 탄 정약용 선생님과 새 캐릭터">
+                    <div class="mini-card">
+                        <strong>무엇이 궁금한가요?</strong>
+                        <p>정책 설명부터 맞춤 추천, 자격 확인까지 편하게 질문해보세요.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section features" id="features">
+            <div class="section-inner">
+                <div class="section-heading">
+                    <span class="kicker">SERVICE</span>
+                    <h2>필요한 정책 정보를<br>한 번의 대화로 확인하세요</h2>
+                    <p>어려운 정책 문서를 직접 찾아다니지 않아도 질문 목적에 맞춰 필요한 내용을 정리해드립니다.</p>
+                </div>
+                <div class="feature-grid">
+                    <article class="feature-card">
+                        <span class="feature-number">01</span>
+                        <h3>정책 알아보기</h3>
+                        <p>지원 대상, 지원 내용, 신청 기간과 방법을 정책 자료에 근거해 한눈에 읽기 쉽게 설명합니다.</p>
+                    </article>
+                    <article class="feature-card">
+                        <span class="feature-number">02</span>
+                        <h3>맞춤 정책 추천</h3>
+                        <p>취업, 주거, 창업, 농업 등 관심 분야와 입력한 프로필을 바탕으로 살펴볼 정책을 제안합니다.</p>
+                    </article>
+                    <article class="feature-card">
+                        <span class="feature-number">03</span>
+                        <h3>자격 요건 확인</h3>
+                        <p>선택한 정책의 필수 조건을 비교하고, 확인이 더 필요한 사항은 추가 질문으로 안내합니다.</p>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section class="section how" id="how">
+            <div class="section-inner">
+                <div class="section-heading">
+                    <span class="kicker">HOW TO USE</span>
+                    <h2>질문은 평소 말하듯 편하게</h2>
+                    <p>정책명을 정확히 몰라도 관심 분야나 현재 상황을 자연어로 입력할 수 있습니다.</p>
+                </div>
+                <div class="steps">
+                    <article class="step"><b>STEP 01</b><h3>상담 목적 선택</h3><p>정책 설명, 맞춤 추천, 자격 확인 중 원하는 기능을 선택합니다.</p></article>
+                    <article class="step"><b>STEP 02</b><h3>정보 또는 질문 입력</h3><p>필요한 경우 화면 카드에서 조건을 선택하거나 질문을 자유롭게 입력합니다.</p></article>
+                    <article class="step"><b>STEP 03</b><h3>결과와 공식 출처 확인</h3><p>정리된 결과를 읽고 최종 신청 전 연결된 공식 출처에서 최신 공고를 확인합니다.</p></article>
+                </div>
+            </div>
+        </section>
+
+        <section class="section questions">
+            <div class="section-inner">
+                <div>
+                    <span class="kicker">ASK NATURALLY</span>
+                    <h2>이렇게 물어볼 수 있어요</h2>
+                    <p class="questions-copy">정책명, 관심 분야, 현재 상황을 함께 적어도 두물청이 대화의 목적을 구분해 안내합니다.</p>
+                </div>
+                <div class="question-list" aria-label="질문 예시">
+                    <div class="question-item">“청년기본소득은 누가 받을 수 있어?”</div>
+                    <div class="question-item">“주거와 취업 분야 정책을 추천해줘.”</div>
+                    <div class="question-item">“나는 만 24세 군인인데 받을 수 있는 지원이 있을까?”</div>
+                    <div class="question-item">“면접 준비에 도움 되는 정책을 찾아줘.”</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section final-cta">
+            <div class="section-inner">
+                <span class="kicker">START NOW</span>
+                <h2>나에게 맞는 남양주시 청년정책을 찾아보세요</h2>
+                <p>복잡한 정책 탐색, 두물청과의 대화로 시작할 수 있습니다.</p>
+                <a class="primary-cta" href="http://localhost:8000/">상담 시작하기</a>
+                <div class="notice">자격 확인 결과는 입력 정보에 따른 참고 안내이며, 실제 신청과 선정은 최신 공식 공고 및 담당 기관의 심사를 따릅니다.</div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="footer-inner">
+            <span>두물청 · 남양주시 청년정책 AI 상담사</span>
+            <span>공식 정책 자료를 바탕으로 이해하기 쉬운 안내를 제공합니다.</span>
+        </div>
+    </footer>
+</body>
+</html>

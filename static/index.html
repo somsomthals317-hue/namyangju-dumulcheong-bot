@@ -1,0 +1,1340 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>두물청 - 남양주시 청년정책 AI 상담사</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #1a5276 0%, #1e8c6e 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .phone-frame {
+            width: 390px; height: 780px;
+            background: #fff;
+            border-radius: 40px;
+            border: 6px solid #000;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden; position: relative;
+            display: flex; flex-direction: column;
+        }
+
+        .notch {
+            position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+            width: 150px; height: 28px; background: #000;
+            border-radius: 0 0 16px 16px; z-index: 100;
+        }
+
+        /* 시작화면 */
+        .start-screen {
+            flex: 1; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            background:
+                linear-gradient(180deg, rgba(240,249,244,0.78) 0%, rgba(232,244,248,0.84) 100%),
+                url('/static/dumool_watercolor_background.png') center 56% / cover no-repeat;
+            padding: 40px 30px; text-align: center;
+        }
+        .start-screen.hidden { display: none; }
+        .start-avatar {
+            width: 160px; height: 160px; border-radius: 50%;
+            object-fit: cover; border: 4px solid #1e8c6e;
+            margin-bottom: 24px; box-shadow: 0 8px 24px rgba(30,140,110,0.2);
+        }
+        .start-title { font-size: 28px; font-weight: 700; color: #1a5276; margin-bottom: 8px; }
+        .start-subtitle { font-size: 14px; color: #666; margin-bottom: 36px; line-height: 1.5; }
+        .start-btn {
+            background: linear-gradient(135deg, #1a5276, #1e8c6e);
+            color: #fff; border: none; padding: 16px 48px;
+            border-radius: 30px; font-size: 18px; font-weight: 600;
+            cursor: pointer; box-shadow: 0 4px 16px rgba(30,140,110,0.3);
+        }
+        .start-btn:hover { transform: translateY(-2px); }
+
+        /* 채팅화면 */
+        .chat-screen { flex:1; display:none; flex-direction:column; height:100%; }
+        .chat-screen.active { display:flex; }
+
+        .chat-header {
+            background: linear-gradient(135deg, #1a5276, #1e8c6e);
+            color: white; padding: 40px 20px 14px;
+            display: flex; align-items: center; gap: 12px;
+        }
+        .header-avatar { width:36px; height:36px; border-radius:50%; object-fit:cover; border:2px solid rgba(255,255,255,0.5); }
+        .header-info h1 { font-size:16px; font-weight:600; }
+        .header-info p { font-size:11px; opacity:0.8; }
+        .header-actions { margin-left:auto; display:flex; gap:8px; }
+        .header-btn {
+            background:rgba(255,255,255,0.15); border:none; color:white;
+            width:32px; height:32px; border-radius:50%; cursor:pointer;
+            font-size:14px; display:flex; align-items:center; justify-content:center;
+        }
+        .header-btn:hover { background:rgba(255,255,255,0.3); }
+
+        /* 메시지 영역 */
+        .chat-messages {
+            flex:1; overflow-y:auto; padding:16px;
+            background:
+                linear-gradient(rgba(245,247,250,0.90), rgba(245,247,250,0.90)),
+                url('/static/dumool_watercolor_background.png') center 65% / cover no-repeat;
+            display:flex; flex-direction:column; gap:12px;
+        }
+        .message { display:flex; gap:8px; max-width:85%; animation:fadeInUp 0.3s ease; }
+        @keyframes fadeInUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+        .message.bot { align-self:flex-start; }
+        .message.user { align-self:flex-end; flex-direction:row-reverse; }
+        .msg-avatar { width:32px; height:32px; border-radius:50%; object-fit:cover; flex-shrink:0; }
+        .msg-bubble { padding:12px 16px; border-radius:18px; font-size:13px; line-height:1.6; word-break:break-word; white-space:pre-wrap; }
+        .message.bot .msg-bubble { background:#fff; color:#333; border:1px solid #e8e8e8; border-top-left-radius:4px; }
+        .message.user .msg-bubble { background:linear-gradient(135deg,#1a5276,#1e8c6e); color:white; border-top-right-radius:4px; }
+
+        /* 링크 */
+        .msg-bubble a { color: #1a5276; text-decoration: underline; }
+
+        /* 인라인 카드/버튼들 (채팅 안에 삽입) */
+        .chat-card {
+            background: #fff; border:1px solid #e0e0e0; border-radius:14px;
+            padding:14px; margin-top:8px; width:90%; align-self:flex-start;
+            animation: fadeInUp 0.3s ease;
+        }
+        .chat-card-title { font-size:13px; font-weight:600; color:#1a5276; margin-bottom:10px; }
+        .chat-card select {
+            width:100%; padding:9px 12px; border:1px solid #ddd; border-radius:10px;
+            font-size:13px; outline:none; appearance:none;
+            background:#fafafa url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E") no-repeat right 12px center;
+        }
+        .chat-card select:focus { border-color:#1e8c6e; }
+        .chat-card-btn {
+            margin-top:10px; width:100%; padding:10px;
+            background:linear-gradient(135deg,#1a5276,#1e8c6e); color:white;
+            border:none; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer;
+        }
+        .chat-card-btn:hover { opacity:0.9; }
+        .chat-card-btn:disabled { opacity:0.5; cursor:not-allowed; }
+
+        /* 관심분야 버튼 그리드 */
+        .interest-grid {
+            display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px;
+        }
+        .interest-btn {
+            padding:10px 8px; border:1px solid #1a5276; border-radius:10px;
+            background:#e8f4f8; color:#1a5276; font-size:12px; font-weight:500;
+            cursor:pointer; text-align:center; transition:all 0.2s;
+        }
+        .interest-btn:hover { background:#1a5276; color:white; }
+        .interest-btn.active { background:#1a5276; color:white; box-shadow:0 2px 8px rgba(26,82,118,0.3); }
+
+        /* 프로필 카드 칩/입력 스타일 */
+        .pc-field { margin-bottom:12px; }
+        .pc-label { font-size:12px; color:#1a5276; margin-bottom:6px; font-weight:600; }
+        .pc-chips { display:flex; flex-wrap:wrap; gap:8px; }
+        .pc-chip {
+            padding:8px 16px; border:1.5px solid #ddd; border-radius:20px;
+            background:#fff; color:#444; font-size:13px; cursor:pointer;
+            transition:all 0.2s; box-shadow:0 1px 3px rgba(0,0,0,0.08);
+        }
+        .pc-chip:hover { border-color:#1e8c6e; background:#f0faf7; box-shadow:0 2px 6px rgba(30,140,110,0.15); }
+        .pc-chip.active { background:#1a5276; color:white; border-color:#1a5276; box-shadow:0 2px 8px rgba(26,82,118,0.3); }
+        .pc-chip:disabled { opacity:0.4; cursor:not-allowed; box-shadow:none; }
+        .pc-age-box { display:flex; align-items:center; gap:10px; }
+        .pc-age-box input {
+            width:70px; padding:8px 12px; border:1.5px solid #ddd; border-radius:12px;
+            font-size:15px; text-align:center; outline:none;
+            box-shadow:0 1px 3px rgba(0,0,0,0.08);
+        }
+        .pc-age-box input:focus { border-color:#1e8c6e; box-shadow:0 2px 6px rgba(30,140,110,0.15); }
+        .aq-text-input {
+            width:100%; padding:9px 12px; border:1.5px solid #ddd; border-radius:10px;
+            font-size:13px; outline:none; background:#fff; color:#333;
+        }
+        .aq-text-input:focus { border-color:#1e8c6e; box-shadow:0 2px 6px rgba(30,140,110,0.15); }
+        .pc-step {
+            width:34px; height:34px; border:1.5px solid #ddd; border-radius:50%;
+            background:#fff; font-size:18px; cursor:pointer; display:flex;
+            align-items:center; justify-content:center;
+            box-shadow:0 1px 3px rgba(0,0,0,0.08); transition:all 0.2s;
+        }
+        .pc-step:hover { background:#e8f4f8; border-color:#1e8c6e; box-shadow:0 2px 6px rgba(30,140,110,0.15); }
+
+        /* ELIG 버튼 */
+        .elig-btn {
+            display:inline-block; background:#e8f4f8; border:1px solid #1e8c6e;
+            color:#1a5276; padding:8px 14px; border-radius:16px;
+            font-size:12px; font-weight:500; cursor:pointer; margin-top:6px;
+        }
+        .elig-btn:hover { background:#1e8c6e; color:white; }
+
+        /* 로딩 */
+        .typing-indicator { display:flex; gap:4px; padding:4px 0; }
+        .typing-indicator span { width:6px; height:6px; background:#aaa; border-radius:50%; animation:blink 1.4s infinite; }
+        .typing-indicator span:nth-child(2) { animation-delay:0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay:0.4s; }
+        @keyframes blink { 0%,60%,100%{opacity:0.3} 30%{opacity:1} }
+
+        /* 채팅 상단을 함께 천천히 떠다니는 정약용과 새 친구 */
+        .chat-mascot-strip {
+            height: 112px; flex-shrink: 0; position: relative; overflow: hidden;
+            background:
+                linear-gradient(rgba(245,247,250,0.68), rgba(245,247,250,0.68)),
+                url('/static/dumool_watercolor_background.png') center 68% / cover no-repeat;
+            border-bottom: 1px solid rgba(30,140,110,0.08);
+            pointer-events: none;
+        }
+        .floating-friends {
+            position:absolute; left:50%; top:3px;
+            display:flex; align-items:center; gap:7px;
+            animation:mascotDrift 16s ease-in-out infinite alternate;
+        }
+        .floating-duo {
+            display:block; width:190px; height:106px; object-fit:contain;
+            background:transparent;
+            filter:contrast(1.06) saturate(1.08);
+        }
+        .mascot-speech {
+            position:relative; max-width:116px; padding:7px 10px;
+            border:1px solid rgba(30,140,110,0.24); border-radius:14px;
+            background:rgba(255,255,255,0.90); color:#1a5276;
+            box-shadow:0 3px 10px rgba(26,82,118,0.10);
+            font-size:10.5px; font-weight:600; line-height:1.35;
+            text-align:center; white-space:nowrap;
+        }
+        .mascot-speech::before {
+            content:''; position:absolute; left:-6px; top:50%;
+            width:10px; height:10px; background:rgba(255,255,255,0.90);
+            border-left:1px solid rgba(30,140,110,0.24);
+            border-bottom:1px solid rgba(30,140,110,0.24);
+            transform:translateY(-50%) rotate(45deg);
+        }
+        @keyframes mascotDrift {
+            from { transform:translateX(-174px) translateY(2px); }
+            to { transform:translateX(-112px) translateY(-2px); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .floating-friends { animation:none; transform:translateX(-143px); }
+        }
+
+        /* 퀵 액션 */
+        .quick-actions { display:flex; gap:8px; padding:10px 16px; background:#fff; border-top:1px solid #eee; justify-content:center; }
+        .quick-btn {
+            background:#e8f4f8; border:1px solid #1a5276; color:#1a5276;
+            padding:8px 12px; border-radius:20px; font-size:11px; font-weight:500;
+            cursor:pointer; white-space:nowrap;
+        }
+        .quick-btn:hover { background:#1a5276; color:white; }
+
+        /* 입력 */
+        .chat-input-area { display:flex; align-items:center; gap:8px; padding:12px 16px; background:#fff; border-top:1px solid #eee; }
+        .chat-input { flex:1; border:1px solid #ddd; border-radius:18px; padding:10px 18px; font-size:14px; outline:none; line-height:1.4; font-family:inherit; max-height:72px; }
+        .chat-input:focus { border-color:#1e8c6e; }
+        .send-btn {
+            width:40px; height:40px; background:linear-gradient(135deg,#1a5276,#1e8c6e);
+            border:none; border-radius:50%; color:white; font-size:18px; cursor:pointer;
+            display:flex; align-items:center; justify-content:center;
+        }
+        .send-btn:disabled { opacity:0.5; cursor:not-allowed; }
+
+        /* 프로필 모달 */
+        .modal-overlay { display:none; position:absolute; top:0;left:0;right:0;bottom:0; background:rgba(0,0,0,0.5); z-index:200; justify-content:center; align-items:center; padding:20px; }
+        .modal-overlay.active { display:flex; }
+        .modal { background:white; border-radius:20px; padding:24px; width:100%; max-height:90%; overflow-y:auto; }
+        .modal h2 { font-size:18px; color:#1a5276; margin-bottom:6px; }
+        .modal p { font-size:12px; color:#888; margin-bottom:18px; }
+        .form-group { margin-bottom:14px; }
+        .form-group label { display:block; font-size:13px; font-weight:500; color:#444; margin-bottom:5px; }
+        .form-group select { width:100%; padding:10px 14px; border:1px solid #ddd; border-radius:10px; font-size:14px; outline:none; appearance:none; background:#fafafa url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E") no-repeat right 12px center; }
+        .form-group select:focus { border-color:#1e8c6e; }
+        .modal-actions { display:flex; gap:10px; margin-top:18px; }
+        .modal-actions button { flex:1; padding:12px; border-radius:12px; font-size:14px; font-weight:600; cursor:pointer; border:none; }
+        .btn-cancel { background:#f0f0f0; color:#666; }
+        .btn-submit { background:linear-gradient(135deg,#1a5276,#1e8c6e); color:white; }
+
+        .chat-messages::-webkit-scrollbar { width:4px; }
+        .chat-messages::-webkit-scrollbar-thumb { background:#ccc; border-radius:2px; }
+
+        @media (max-width:430px) {
+            body { padding:0; }
+            .phone-frame { width:100%; height:100vh; border-radius:0; border:none; }
+            .notch { display:none; }
+        }
+        @media (max-height:700px) {
+            .start-screen { padding:20px 24px; }
+            .start-subtitle { margin-bottom:24px; }
+            .chat-mascot-strip { height:88px; }
+            .floating-friends { top:3px; }
+            .floating-duo { width:158px; height:82px; }
+            .mascot-speech { padding:6px 8px; font-size:10px; }
+        }
+    </style>
+</head>
+<body>
+<div class="phone-frame">
+    <div class="notch"></div>
+
+    <!-- 시작 화면 -->
+    <div class="start-screen" id="startScreen">
+        <img src="/static/profile_jeong_yakyong.png" alt="남양주시 정약용 캐릭터" class="start-avatar">
+        <h1 class="start-title">두물청</h1>
+        <p class="start-subtitle">남양주시 청년정책 AI 상담사<br>정약용이 여러분의 청년 정책을 안내해드립니다</p>
+        <button class="start-btn" onclick="startChat()">시작하기</button>
+    </div>
+
+    <!-- 채팅 화면 -->
+    <div class="chat-screen" id="chatScreen">
+        <div class="chat-header">
+            <img src="/static/profile_jeong_yakyong.png" alt="남양주시 정약용 캐릭터" class="header-avatar">
+            <div class="header-info">
+                <h1>두물청</h1>
+                <p>남양주시 청년정책 AI 상담사</p>
+            </div>
+            <div class="header-actions">
+                <button class="header-btn" onclick="openProfile()" title="프로필 설정">👤</button>
+                <button class="header-btn" onclick="resetChat()" title="대화 초기화">🔄</button>
+            </div>
+        </div>
+
+        <div class="chat-mascot-strip">
+            <div class="floating-friends">
+                <img src="/static/floating_teacher_bird_boat_cutout.png" alt="" class="floating-duo" aria-hidden="true">
+                <div class="mascot-speech">무엇이든 물어보세요!</div>
+            </div>
+        </div>
+
+        <div class="chat-messages" id="chatMessages"></div>
+
+        <div class="quick-actions">
+            <button class="quick-btn" onclick="startExplain()">📋 정책 알아보기</button>
+            <button class="quick-btn" onclick="startRecommend()">🎯 맞춤 추천받기</button>
+            <button class="quick-btn" onclick="startEligibility()">✅ 자격 확인하기</button>
+        </div>
+
+        <div class="chat-input-area">
+            <textarea class="chat-input" id="chatInput" placeholder="메시지를 입력하세요..." rows="1" style="resize:none;overflow:hidden;" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,72)+'px'"></textarea>
+            <button class="send-btn" id="sendBtn" onclick="sendMessage()">➤</button>
+        </div>
+    </div>
+
+    <!-- 프로필 모달 -->
+    <div class="modal-overlay" id="profileModal">
+        <div class="modal">
+            <h2>내 프로필 설정</h2>
+            <p>정확한 정책 추천을 위해 입력해주세요</p>
+            <div class="form-group"><label>만 나이</label><select id="profAge"><option value="">선택</option><option value="15">만 15세</option><option value="16">만 16세</option><option value="17">만 17세</option><option value="18">만 18세</option><option value="19">만 19세</option><option value="20">만 20세</option><option value="21">만 21세</option><option value="22">만 22세</option><option value="23">만 23세</option><option value="24">만 24세</option><option value="25">만 25세</option><option value="26">만 26세</option><option value="27">만 27세</option><option value="28">만 28세</option><option value="29">만 29세</option><option value="30">만 30세</option><option value="31">만 31세</option><option value="32">만 32세</option><option value="33">만 33세</option><option value="34">만 34세</option><option value="35">만 35세</option><option value="36">만 36세</option><option value="37">만 37세</option><option value="38">만 38세</option><option value="39">만 39세</option><option value="40">만 40세</option><option value="41">만 41세</option><option value="42">만 42세</option><option value="43">만 43세</option><option value="44">만 44세</option><option value="45">만 45세</option></select></div>
+            <div class="form-group"><label>남양주시 거주</label><select id="profResidency"><option value="">선택</option><option value="예">예</option><option value="아니오">아니오</option></select></div>
+            <div class="form-group"><label>고용 상태</label><select id="profEmployment"><option value="">선택</option><option value="취업">취업</option><option value="미취업">미취업</option></select></div>
+            <div class="form-group"><label>학생 여부</label><select id="profStudent"><option value="">선택</option><option value="고등학생">고등학생</option><option value="대학생">대학생</option><option value="대학원생">대학원생</option><option value="해당하지 않음">해당하지 않음</option></select></div>
+            <div class="form-group"><label>창업 여부</label><select id="profStartup"><option value="">선택</option><option value="창업 중">창업 중</option><option value="창업 준비 중">창업 준비 중</option><option value="창업하지 않음">창업하지 않음</option></select></div>
+            <div class="form-group"><label>주택 보유</label><select id="profHousing"><option value="">선택</option><option value="주택 소유">주택 소유</option><option value="무주택">무주택</option></select></div>
+            <div class="form-group"><label>결혼 여부</label><select id="profMarriage"><option value="">선택</option><option value="미혼">미혼</option><option value="기혼">기혼</option></select></div>
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="closeProfile()">취소</button>
+                <button class="btn-submit" onclick="submitProfile()">저장하기</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// sessionStorage로 세션 유지 (새로고침 시 유지, 탭 닫으면 삭제)
+let SESSION_ID = sessionStorage.getItem('dumoolchung_session');
+if (!SESSION_ID) {
+    SESSION_ID = 'session_' + Date.now();
+    sessionStorage.setItem('dumoolchung_session', SESSION_ID);
+}
+let isWaiting = false;
+// window에 노출 (자동 테스트에서 상태 확인용)
+window.policiesList = [];
+window.eligibilityPoliciesList = [];
+let policiesLoadPromise = null;
+
+// === 시작 ===
+function startChat() {
+    document.getElementById('startScreen').classList.add('hidden');
+    document.getElementById('chatScreen').classList.add('active');
+    addBotMessage("안녕하세요! 저는 두물청, 남양주시 청년정책 AI 상담사입니다.\n\n아래 버튼을 눌러보세요.\n\n📋 정책 알아보기 - 목록에서 정책을 골라 상세 설명\n🎯 맞춤 추천받기 - 관심 분야 선택 후 맞춤 추천\n✅ 자격 확인하기 - 특정 정책 자격 요건 확인\n\n또는 자유롭게 질문해도 됩니다!");
+    policiesLoadPromise = loadPolicies();
+}
+
+async function loadPolicies() {
+    try {
+        const res = await fetch('/api/policies');
+        const data = await res.json();
+        policiesList = data.policies || [];
+        eligibilityPoliciesList = data.eligibility_policies || [];
+    } catch(e) { policiesList = []; eligibilityPoliciesList = []; }
+}
+
+// === 메시지 렌더링 ===
+function addBotMessage(text) {
+    const container = document.getElementById('chatMessages');
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'message bot';
+    msgDiv.innerHTML = `
+        <img src="/static/profile_jeong_yakyong.png" alt="남양주시 정약용 캐릭터" class="msg-avatar">
+        <div class="msg-bubble">${formatResponse(text)}</div>
+    `;
+    container.appendChild(msgDiv);
+    scrollToBottom();
+}
+
+function formatResponse(text) {
+    text = String(text || '답변을 불러오지 못했어요. 잠시 후 다시 시도해주세요.');
+    // 1) [ELIG_BTN:id:name] → 버튼
+    let html = text.replace(/\[ELIG_BTN:([^:]+):([^\]]+)\]/g, (m, id, name) => {
+        return `<button class="elig-btn" onclick="checkEligibility('${id}','${name}')">🔍 자격 요건 추가로 확인하기</button>`;
+    });
+
+    // 1b) [ACTION_BTN:type:label] → 액션 버튼
+    html = html.replace(/\[ACTION_BTN:RESET_PROFILE:([^\]]+)\]/g, '<button class="elig-btn" onclick="resetAndShowFullCard(this)">👤 $1</button>');
+    html = html.replace(/\[ACTION_BTN:RESET_CHAT:([^\]]+)\]/g, '<button class="elig-btn" onclick="resetChat()">🔄 $1</button>');
+
+    // 2) [text](url) 마크다운 링크 → <a> (이스케이프 전에 처리)
+    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" style="color:#1a5276;">$1</a>');
+
+    // 3) 일반 URL → 클릭 가능 링크 (아직 <a>로 안 감싸진 것만)
+    // URL 뒤의 정책 설명 괄호는 화면에 남기되 링크 주소에는 포함하지 않는다.
+    html = html.replace(/(^|[^"'>])(https?:\/\/[^\s<()\[\]{}]+)/gm, '$1<a href="$2" target="_blank" style="color:#1a5276;">$2</a>');
+
+    // 4) 버튼+링크 보존하면서 나머지 이스케이프
+    const preserved = [];
+    let idx = 0;
+    html = html.replace(/<(button|a)[^>]*>.*?<\/(button|a)>/g, m => { preserved.push(m); return `§KEEP${idx++}§`; });
+    html = escapeHtml(html);
+    preserved.forEach((p, j) => { html = html.replace(`§KEEP${j}§`, p); });
+
+    // 5) **bold** 제거
+    html = html.replace(/\*\*([^*]+)\*\*/g, '$1');
+
+    // 6) ### 헤딩 제거
+    html = html.replace(/^#{1,3}\s*/gm, '');
+
+    return html;
+}
+
+function addUserMessage(text) {
+    const container = document.getElementById('chatMessages');
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'message user';
+    msgDiv.innerHTML = `<div class="msg-bubble">${escapeHtml(text)}</div>`;
+    container.appendChild(msgDiv);
+    scrollToBottom();
+}
+
+function showTyping() {
+    const container = document.getElementById('chatMessages');
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'message bot';
+    msgDiv.id = 'typingMsg';
+    msgDiv.innerHTML = `
+        <img src="/static/profile_jeong_yakyong.png" alt="남양주시 정약용 캐릭터" class="msg-avatar">
+        <div class="msg-bubble" style="padding:6px 14px; display:inline-flex; align-items:center; min-height:0;">
+            <div class="typing-indicator"><span></span><span></span><span></span></div>
+        </div>
+    `;
+    container.appendChild(msgDiv);
+    scrollToBottom();
+}
+function hideTyping() { const el = document.getElementById('typingMsg'); if(el) el.remove(); }
+function scrollToBottom() { const c = document.getElementById('chatMessages'); c.scrollTop = c.scrollHeight; }
+function escapeHtml(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+
+// === 활성 카드 비활성화 (새 작업 시작 시) ===
+function deactivateAllCards() {
+    document.querySelectorAll('.chat-card').forEach(c => {
+        c.querySelectorAll('button, input, select').forEach(el => el.disabled = true);
+        c.style.opacity = '0.45';
+    });
+}
+
+// === 하단 3개 버튼 — 구조화 이벤트 ===
+async function startExplain() {
+    if (isWaiting) return;
+    isWaiting = true;
+    if (policiesList.length === 0) {
+        policiesLoadPromise = policiesLoadPromise || loadPolicies();
+        await policiesLoadPromise;
+    }
+    isWaiting = false;
+    if (policiesList.length === 0) {
+        addBotMessage('정책 목록을 불러오지 못했어요. 잠시 후 다시 눌러주세요.');
+        return;
+    }
+    deactivateAllCards();
+    showPolicyList('EXPLAIN');
+}
+
+async function startEligibility() {
+    if (isWaiting) return;
+    isWaiting = true;
+    if (eligibilityPoliciesList.length === 0) {
+        policiesLoadPromise = policiesLoadPromise || loadPolicies();
+        await policiesLoadPromise;
+    }
+    isWaiting = false;
+    if (eligibilityPoliciesList.length === 0) {
+        addBotMessage('자격 확인 정책 목록을 불러오지 못했어요. 잠시 후 다시 눌러주세요.');
+        return;
+    }
+    deactivateAllCards();
+    showPolicyList('ELIGIBILITY');
+}
+
+async function startRecommend() {
+    if (isWaiting) return;
+    deactivateAllCards();
+    pendingInterest = '';
+    // 서버에 START_RECOMMEND 이벤트로 이전 작업 정리
+    isWaiting = true;
+    try {
+        const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: SESSION_ID, message: '', ui_event: 'START_RECOMMEND_RESET' }),
+        });
+        const data = await res.json();
+        if (data.state && data.state.profile) serverProfile = data.state.profile;
+    } catch(e) {}
+    isWaiting = false;
+    showInterestCards();
+}
+
+// === 📋 정책 알아보기 / ✅ 자격 확인하기 → 목록 드롭다운 카드 ===
+function showPolicyList(mode) {
+    const container = document.getElementById('chatMessages');
+    const label = mode === 'EXPLAIN' ? '어떤 정책에 대해 알고 싶으세요?' : '어떤 정책의 자격을 확인할까요?';
+
+    // 봇 메시지로 안내
+    addBotMessage(label + '\n아래에서 정책을 선택해주세요.');
+
+    // 카드 UI 삽입
+    const card = document.createElement('div');
+    card.className = 'chat-card';
+    const listToUse = mode === 'ELIGIBILITY' ? eligibilityPoliciesList : policiesList;
+    card.innerHTML = `
+        <div class="chat-card-title">${mode === 'EXPLAIN' ? '📋 정책 선택' : '✅ 자격 확인할 정책'}</div>
+        <select id="policySelect_${Date.now()}">
+            <option value="">정책을 선택하세요</option>
+            ${listToUse.map(p => `<option value="${p.policy_name}">${p.policy_name}</option>`).join('')}
+        </select>
+        <button class="chat-card-btn" onclick="onPolicySelected(this, '${mode}')">선택 완료</button>
+    `;
+    container.appendChild(card);
+    scrollToBottom();
+}
+
+function onPolicySelected(btn, mode) {
+    const select = btn.previousElementSibling;
+    const policyName = select.value;
+    if (!policyName) return;
+
+    // 카드 비활성화
+    btn.disabled = true;
+    select.disabled = true;
+
+    if (mode === 'EXPLAIN') {
+        sendMessage(`${policyName} 정책에 대해 알려줘`);
+    } else {
+        sendMessage(`${policyName} 자격 확인해줘`);
+    }
+}
+
+// === 🎯 맞춤 추천받기 → 관심분야 카드 ===
+function showInterestCards() {
+    addBotMessage('어떤 분야의 정책에 관심이 있으세요?\n여러 개 선택 가능해요. 선택 후 완료 버튼을 눌러주세요.');
+
+    const container = document.getElementById('chatMessages');
+    const card = document.createElement('div');
+    card.className = 'chat-card';
+    const interests = ['취업', '주거', '창업', '교육', '복지', '참여·문화', '기본소득', '농업', '전체'];
+    card.innerHTML = `
+        <div class="chat-card-title">🎯 관심 분야 선택 (복수 선택 가능)</div>
+        <div class="interest-grid">
+            ${interests.map(i => `<button class="interest-btn" data-interest="${i}" onclick="toggleInterest(this)">${i}</button>`).join('')}
+        </div>
+        <button class="chat-card-btn" style="margin-top:10px;" onclick="submitInterests(this)">선택 완료</button>
+    `;
+    container.appendChild(card);
+    scrollToBottom();
+}
+
+function toggleInterest(btn) {
+    if (btn.dataset.interest === '전체') {
+        // 전체 선택시 다른 것 해제
+        btn.closest('.interest-grid').querySelectorAll('.interest-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    } else {
+        // 전체 해제
+        btn.closest('.interest-grid').querySelector('[data-interest="전체"]').classList.remove('active');
+        btn.classList.toggle('active');
+    }
+}
+
+let pendingInterest = '';
+
+function submitInterests(btn) {
+    const card = btn.closest('.chat-card');
+    const selected = [...card.querySelectorAll('.interest-btn.active')].map(b => b.dataset.interest);
+    if (selected.length === 0) {
+        showCardError(card, '관심 분야를 하나 이상 선택해주세요.');
+        return;
+    }
+
+    card.querySelectorAll('button').forEach(b => b.disabled = true);
+    card.style.opacity = '0.6';
+    pendingInterest = selected.join(', ');
+    addUserMessage(`관심 분야: ${pendingInterest}`);
+    // 항상 추천용 Profile 카드를 표시 (기존값 prefill)
+    addBotMessage("추천에 사용할 조건을 확인해주세요.\n기존 정보가 있으면 미리 채워져 있어요.");
+    showRecommendProfileCard();
+}
+
+function showCardError(card, msg) {
+    let err = card.querySelector('.card-error');
+    if (!err) {
+        err = document.createElement('div');
+        err.className = 'card-error';
+        err.style.cssText = 'color:#c0392b;font-size:12px;margin-top:8px;';
+        card.appendChild(err);
+    }
+    err.textContent = msg;
+}
+
+// === 추천용 Profile 카드 (기존값 prefill) ===
+function showRecommendProfileCard() {
+    pcSelections = {};
+    // 서버 profile로 prefill
+    if (serverProfile) {
+        ['age','residency','employment','student','startup','housing','marriage'].forEach(f => {
+            if (serverProfile[f] !== null && serverProfile[f] !== undefined) {
+                pcSelections[f] = String(serverProfile[f]);
+            }
+        });
+    }
+
+    const container = document.getElementById('chatMessages');
+    const card = document.createElement('div');
+    card.className = 'chat-card';
+    card.dataset.cardType = 'recommend-profile';
+
+    const fields = [
+        {field:'residency', label:'남양주시 거주', options:['예','아니오']},
+        {field:'employment', label:'고용 상태', options:['취업','미취업']},
+        {field:'student', label:'학생 여부', options:['고등학생','대학생','대학원생','해당하지 않음']},
+        {field:'startup', label:'창업 여부', options:['창업 중','창업 준비 중','창업하지 않음']},
+        {field:'housing', label:'주택 보유', options:['주택 소유','무주택']},
+        {field:'marriage', label:'결혼 여부', options:['미혼','기혼']},
+    ];
+
+    const ageVal = pcSelections.age || '';
+    let html = `
+        <div class="chat-card-title">🎯 추천 조건 확인</div>
+        <div class="pc-field">
+            <div class="pc-label">만 나이</div>
+            <div class="pc-age-box">
+                <button type="button" class="pc-step" onclick="stepAge(this,-1)">−</button>
+                <input type="number" id="pc_age" min="15" max="45" placeholder="나이" value="${ageVal}" oninput="pcSelections.age=this.value">
+                <button type="button" class="pc-step" onclick="stepAge(this,1)">+</button>
+            </div>
+        </div>
+    `;
+    fields.forEach(f => {
+        html += `
+            <div class="pc-field">
+                <div class="pc-label">${f.label}</div>
+                <div class="pc-chips">
+                    ${f.options.map(o => {
+                        const active = pcSelections[f.field] === o ? ' active' : '';
+                        return `<button type="button" class="pc-chip${active}" data-field="${f.field}" data-value="${o}" onclick="selectChip(this)">${o}</button>`;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    });
+    html += `
+        <button class="chat-card-btn" style="background:#7c3aed;" onclick="submitRecommendProfile(this)">이 조건으로 추천받기</button>
+        <button class="chat-card-btn" style="background:#eee;color:#1a5276;margin-top:6px;" onclick="exploreWithoutProfile(this)">조건 없이 찾아보기</button>
+    `;
+    card.innerHTML = html;
+    container.appendChild(card);
+    scrollToBottom();
+}
+
+async function submitRecommendProfile(btn) {
+    const card = btn.closest('.chat-card');
+    const profile = {};
+    if (pcSelections.age) profile.age = parseInt(pcSelections.age);
+    ['residency','employment','student','startup','housing','marriage'].forEach(f => {
+        if (pcSelections[f]) profile[f] = pcSelections[f];
+    });
+
+    // 필수 항목 검증 (7개 전부)
+    const required = ['age','residency','employment','student','startup','housing','marriage'];
+    const missing = required.filter(f => !profile[f]);
+    if (missing.length > 0) {
+        const labels = {age:'만 나이', residency:'남양주시 거주', employment:'고용 상태',
+                        student:'학생 여부', startup:'창업 여부', housing:'주택 보유', marriage:'결혼 여부'};
+        showCardError(card, '다음 항목을 선택해주세요: ' + missing.map(f => labels[f]).join(', '));
+        return;
+    }
+
+    card.querySelectorAll('button, input').forEach(el => el.disabled = true);
+    card.style.opacity = '0.6';
+    addUserMessage('이 조건으로 추천받기');
+    showTyping();
+    isWaiting = true;
+
+    try {
+        const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: SESSION_ID,
+                message: '',
+                ui_event: 'SUBMIT_RECOMMEND_PROFILE',
+                profile: profile,
+                interest: pendingInterest,
+            }),
+        });
+        const data = await res.json();
+        hideTyping();
+        const st = data.state || {};
+        if (st.profile) serverProfile = st.profile;
+        if (st.active_clarify === 'CLARIFY_PREFERENCE') {
+            addBotMessage(data.response);
+            showInterestCardsInChat();
+        } else {
+            addBotMessage(data.response);
+        }
+    } catch(e) { hideTyping(); addBotMessage("오류가 발생했어요. 다시 시도해주세요."); }
+    isWaiting = false;
+    document.getElementById('sendBtn').disabled = false;
+}
+
+async function exploreWithoutProfile(btn) {
+    const card = btn.closest('.chat-card');
+    card.querySelectorAll('button, input').forEach(el => el.disabled = true);
+    card.style.opacity = '0.6';
+    addUserMessage('조건 없이 찾아보기');
+    showTyping();
+    isWaiting = true;
+    try {
+        const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: SESSION_ID,
+                message: `조건 없이 ${pendingInterest} 추천해줘`,
+                interest: pendingInterest,
+            }),
+        });
+        const data = await res.json();
+        hideTyping();
+        if (data.state && data.state.profile) serverProfile = data.state.profile;
+        addBotMessage(data.response);
+    } catch(e) { hideTyping(); addBotMessage("오류가 발생했어요. 다시 시도해주세요."); }
+    isWaiting = false;
+    document.getElementById('sendBtn').disabled = false;
+}
+
+function onInterestSelected(btn, interest) {
+    // showInterestCardsInChat에서 사용 (단일 선택용 - Clarify에서)
+    btn.closest('.interest-grid').querySelectorAll('.interest-btn').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
+    btn.style.opacity = '1'; btn.style.background = '#1a5276'; btn.style.color = 'white';
+    sendMessage(`${interest} 분야 정책 추천해줘`);
+}
+
+// === 자격확인 버튼 (UNKNOWN 정책에서) ===
+function checkEligibility(policyId, policyName) {
+    sendMessage(`${policyName} 자격 확인해줘`);
+}
+
+// === 메시지 전송 ===
+async function sendMessage(overrideText) {
+    const input = document.getElementById('chatInput');
+    const text = overrideText || input.value.trim();
+    if (!text) return;
+    if (isWaiting) return;
+
+    addUserMessage(text);
+    input.value = '';
+    input.style.height = 'auto';
+    isWaiting = true;
+    document.getElementById('sendBtn').disabled = true;
+    showTyping();
+
+    try {
+        const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: SESSION_ID, message: text }),
+        });
+        const data = await res.json();
+        hideTyping();
+        const st = data.state || {};
+        if (st.profile) serverProfile = st.profile;
+        // 자연어 추천에서 서버가 구조화한 최신 관심분야를
+        // 프로필 카드의 '조건 없이 찾아보기' 버튼에 연결한다.
+        // 이값을 갱신하지 않으면 이전 대화의 복수 분야가 재사용된다.
+        if (typeof st.interest_query === 'string' && st.interest_query.trim()) {
+            pendingInterest = st.interest_query.trim();
+        }
+        
+        // 만 나이 확인은 기존 Clarify 위에 잠시 올라오는 질문이다.
+        // 확인이 끝나기 전에는 이전 정책/프로필 카드를 중복으로 다시 그리지 않는다.
+        const isAgeConfirmation = st.pending_age_confirmation !== null
+            && st.pending_age_confirmation !== undefined;
+        if (isAgeConfirmation) {
+            addBotMessage(data.response);
+        } else if (st.active_clarify === 'CLARIFY_PROFILE') {
+            const missing = st.missing_fields || [];
+            if (missing.length > 0) {
+                // ELIGIBILITY: 필요한 필드만 표시
+                addBotMessage(data.response || "자격 확인을 위해 몇 가지만 확인할게요.");
+                showProfileCard(missing);
+            } else {
+                // RECOMMEND: 전체 프로필
+                addBotMessage(data.response || "맞춤 결과를 위해 프로필 정보가 필요해요!\n아래에서 입력해주세요.");
+                showRecommendProfileCard();
+            }
+        } else if (st.active_clarify === 'CLARIFY_PREFERENCE') {
+            addBotMessage("어떤 분야에 관심이 있으세요?");
+            showInterestCardsInChat();
+        } else if (st.active_clarify === 'CLARIFY_POLICY') {
+            addBotMessage(data.response);
+            showPolicyCardInChat(st.policy_candidates);
+        } else if (st.active_clarify === 'CLARIFY_ADDITIONAL') {
+            // 추가 질문 옵션 카드
+            const aq = st.additional_question;
+            if (aq && aq.questions && aq.questions.length > 0) {
+                addBotMessage(data.response);
+                showAdditionalQuestionCard(aq);
+            } else {
+                addBotMessage(data.response);
+            }
+        } else {
+            addBotMessage(data.response);
+        }
+    } catch(e) {
+        hideTyping();
+        addBotMessage("서버 연결에 문제가 발생했어요. 잠시 후 다시 시도해주세요.");
+    }
+
+    isWaiting = false;
+    document.getElementById('sendBtn').disabled = false;
+}
+
+// === 프로필 ===
+window.serverProfile = {}; // 서버가 반환한 현재 profile 캐시 + 자동 테스트 훅
+
+function openProfile() {
+    // 기존 값 미리 선택
+    if (serverProfile.age) document.getElementById('profAge').value = String(serverProfile.age);
+    if (serverProfile.residency) document.getElementById('profResidency').value = serverProfile.residency;
+    if (serverProfile.employment) document.getElementById('profEmployment').value = serverProfile.employment;
+    if (serverProfile.student) document.getElementById('profStudent').value = serverProfile.student;
+    if (serverProfile.startup) document.getElementById('profStartup').value = serverProfile.startup;
+    if (serverProfile.housing) document.getElementById('profHousing').value = serverProfile.housing;
+    if (serverProfile.marriage) document.getElementById('profMarriage').value = serverProfile.marriage;
+    document.getElementById('profileModal').classList.add('active');
+}
+function closeProfile() { document.getElementById('profileModal').classList.remove('active'); }
+
+async function submitProfile() {
+    const ageVal = document.getElementById('profAge').value;
+    const profile = {
+        age: ageVal ? parseInt(ageVal) : null,
+        residency: document.getElementById('profResidency').value || null,
+        employment: document.getElementById('profEmployment').value || null,
+        student: document.getElementById('profStudent').value || null,
+        startup: document.getElementById('profStartup').value || null,
+        housing: document.getElementById('profHousing').value || null,
+        marriage: document.getElementById('profMarriage').value || null,
+    };
+    const filtered = {};
+    for (const [k,v] of Object.entries(profile)) { if(v !== null && v !== '') filtered[k] = v; }
+    if (Object.keys(filtered).length === 0) { closeProfile(); return; }
+
+    closeProfile();
+    addUserMessage('프로필 설정 완료');
+    showTyping();
+    isWaiting = true;
+
+    try {
+        const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: SESSION_ID, message: '프로필 설정 완료', profile: filtered }),
+        });
+        const data = await res.json();
+        hideTyping();
+        addBotMessage("프로필이 업데이트되었어요! 정책 추천이나 자격 확인을 해볼까요?");
+    } catch(e) { hideTyping(); addBotMessage("프로필 저장 중 오류가 발생했어요."); }
+    isWaiting = false;
+    document.getElementById('sendBtn').disabled = false;
+}
+
+// === State 기반 카드 UI 함수들 ===
+// 프로필 임시 저장소 (칩 버튼 선택값)
+let pcSelections = {};
+
+function makeChipRow(field, label, options) {
+    return `
+        <div class="pc-field">
+            <div class="pc-label">${label}</div>
+            <div class="pc-chips">
+                ${options.map(o => `<button type="button" class="pc-chip" data-field="${field}" data-value="${o}" onclick="selectChip(this)">${o}</button>`).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function selectChip(btn) {
+    const field = btn.dataset.field;
+    const value = btn.dataset.value;
+    btn.closest('.pc-chips').querySelectorAll('.pc-chip').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    pcSelections[field] = value;
+}
+
+async function autoSubmitEligibilityCard(card) {
+    const profile = {};
+    if (pcSelections.age) profile.age = parseInt(pcSelections.age);
+    ['residency','employment','student','startup','housing','marriage'].forEach(f => {
+        if (pcSelections[f]) profile[f] = pcSelections[f];
+    });
+    
+    // 거주 조건은 정책별로 다르므로 화면에서 일괄 차단하지 않는다.
+    // 남양주시 필수 정책은 서버 규칙이 FAIL로 판정하고, 경기도 범위
+    // 정책은 별도 추가 질문으로 정확히 확인한다.
+    card.querySelectorAll('button, input').forEach(el => el.disabled = true);
+    card.style.opacity = '0.7';
+    addUserMessage('프로필 입력 완료');
+    showTyping();
+    isWaiting = true;
+    
+    try {
+        const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: SESSION_ID, message: '', ui_event: 'SUBMIT_PROFILE', profile: profile }),
+        });
+        const data = await res.json();
+        hideTyping();
+        const st = data.state || {};
+        if (st.profile) serverProfile = st.profile;
+        if (typeof st.interest_query === 'string' && st.interest_query.trim()) {
+            pendingInterest = st.interest_query.trim();
+        }
+        if (st.active_clarify === 'CLARIFY_ADDITIONAL') {
+            const aq = st.additional_question;
+            if (aq && aq.questions) {
+                addBotMessage(data.response);
+                showAdditionalQuestionCard(aq);
+            } else {
+                addBotMessage(data.response);
+            }
+        } else if (st.active_clarify === 'CLARIFY_PROFILE') {
+            const missing = st.missing_fields || [];
+            addBotMessage("추가 정보가 필요해요.");
+            showProfileCard(missing.length > 0 ? missing : undefined);
+        } else {
+            addBotMessage(data.response);
+        }
+    } catch(e) { hideTyping(); addBotMessage("오류가 발생했어요."); }
+    isWaiting = false;
+    document.getElementById('sendBtn').disabled = false;
+}
+
+function showProfileCard(onlyFields) {
+    pcSelections = {};
+    lastMissingFields = onlyFields || null;
+    const container = document.getElementById('chatMessages');
+    const card = document.createElement('div');
+    card.className = 'chat-card';
+
+    const allFields = [
+        {field:'age', label:'만 나이', type:'age'},
+        {field:'residency', label:'남양주시 거주', options:['예','아니오']},
+        {field:'employment', label:'고용 상태', options:['취업','미취업']},
+        {field:'student', label:'학생 여부', options:['고등학생','대학생','대학원생','해당하지 않음']},
+        {field:'startup', label:'창업 여부', options:['창업 중','창업 준비 중','창업하지 않음']},
+        {field:'housing', label:'주택 보유', options:['주택 소유','무주택']},
+        {field:'marriage', label:'결혼 여부', options:['미혼','기혼']},
+    ];
+
+    // onlyFields가 있으면 해당 필드만, 없으면 전체
+    const fields = onlyFields && onlyFields.length > 0
+        ? allFields.filter(f => onlyFields.includes(f.field))
+        : allFields;
+
+    const isPartial = onlyFields && onlyFields.length > 0;
+    const title = isPartial ? '👤 필요 정보 입력' : '👤 프로필 입력 (선택 항목만 채워도 돼요)';
+
+    let fieldsHtml = '';
+    for (const f of fields) {
+        if (f.type === 'age') {
+            fieldsHtml += `
+                <div class="pc-field">
+                    <div class="pc-label">${f.label}</div>
+                    <div class="pc-age-box">
+                        <button type="button" class="pc-step" onclick="stepAge(this,-1)">−</button>
+                        <input type="number" id="pc_age" min="15" max="45" placeholder="나이" oninput="pcSelections.age=this.value">
+                        <button type="button" class="pc-step" onclick="stepAge(this,1)">+</button>
+                    </div>
+                </div>`;
+        } else {
+            fieldsHtml += makeChipRow(f.field, f.label, f.options);
+        }
+    }
+
+    card.innerHTML = `
+        <div class="chat-card-title">${title}</div>
+        ${fieldsHtml}
+        ${!isPartial ? '<button class="chat-card-btn" onclick="submitProfileCard(this)">입력 완료</button>' : '<div style="display:flex;gap:8px;margin-top:10px;"><button class="chat-card-btn" style="background:#7c3aed;flex:1;" onclick="manualSubmitEligibility(this)">완료</button><button class="chat-card-btn" style="background:#f8f8f8;color:#666;border:1px solid #ddd;flex:1;" onclick="resetAndShowFullCard(this)">프로필 다시 입력</button></div>'}
+        ${!isPartial ? '<button class="chat-card-btn" style="background:#eee;color:#1a5276;margin-top:6px;" onclick="skipProfile(this)">조건 없이 추천받기</button>' : ''}
+    `;
+    container.appendChild(card);
+
+    // 재설정 시 현재 서버 프로필을 미리 채워 수정할 값만 바꿀 수 있게 한다.
+    for (const f of fields) {
+        const value = serverProfile ? serverProfile[f.field] : null;
+        if (value === null || value === undefined || value === '') continue;
+        if (f.type === 'age') {
+            const ageInput = card.querySelector('input[type="number"]');
+            if (ageInput) {
+                ageInput.value = String(value);
+                pcSelections.age = String(value);
+            }
+        } else {
+            const chip = Array.from(card.querySelectorAll(`.pc-chip[data-field="${f.field}"]`))
+                .find(el => el.dataset.value === String(value));
+            if (chip) {
+                chip.classList.add('active');
+                pcSelections[f.field] = String(value);
+            }
+        }
+    }
+    scrollToBottom();
+}
+
+function stepAge(btn, delta) {
+    const card = btn.closest('.chat-card');
+    const inp = card ? card.querySelector('input[type="number"]') : null;
+    if (!inp) return;
+    let v = parseInt(inp.value) || 19;
+    v = Math.min(45, Math.max(15, v + delta));
+    inp.value = v;
+    pcSelections.age = String(v);
+}
+
+async function submitProfileCard(btn) {
+    const card = btn.closest('.chat-card');
+    const profile = {};
+    if (pcSelections.age) profile.age = parseInt(pcSelections.age);
+    ['residency','employment','student','startup','housing','marriage'].forEach(f => {
+        if (pcSelections[f]) profile[f] = pcSelections[f];
+    });
+    if (Object.keys(profile).length === 0) return;
+
+    card.querySelectorAll('button, input').forEach(el => el.disabled = true);
+    addUserMessage('프로필 입력 완료');
+
+    // ELIGIBILITY vs RECOMMEND 구분: 조건없이 버튼이 없으면 ELIGIBILITY
+    const isEligibility = !card.querySelector('[onclick*="skipProfile"]');
+    
+    if (isEligibility) {
+        // 자격확인: 모든 표시된 필드가 채워졌는지 확인
+        const fieldCount = card.querySelectorAll('.pc-field').length;
+        const filledCount = Object.keys(profile).length;
+        if (filledCount < fieldCount) {
+            showCardError(card, '모든 항목을 입력해주세요.');
+            btn.disabled = false;
+            card.querySelectorAll('button, input').forEach(el => el.disabled = false);
+            return;
+        }
+        // 프로필만 보내고 원래 pending task(ELIGIBILITY) 유지
+        showTyping();
+        isWaiting = true;
+        try {
+            const res = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: SESSION_ID, message: '', ui_event: 'SUBMIT_PROFILE', profile: profile }),
+            });
+            const data = await res.json();
+            hideTyping();
+            const st = data.state || {};
+            if (st.profile) serverProfile = st.profile;
+            if (st.active_clarify === 'CLARIFY_ADDITIONAL') {
+                const aq = st.additional_question;
+                if (aq && aq.questions) {
+                    addBotMessage(data.response);
+                    showAdditionalQuestionCard(aq);
+                } else {
+                    addBotMessage(data.response);
+                }
+            } else if (st.active_clarify === 'CLARIFY_PROFILE') {
+                const missing = st.missing_fields || [];
+                addBotMessage("추가 정보가 필요해요.");
+                showProfileCard(missing.length > 0 ? missing : undefined);
+            } else {
+                addBotMessage(data.response);
+            }
+        } catch(e) { hideTyping(); addBotMessage("오류가 발생했어요."); }
+        isWaiting = false;
+        document.getElementById('sendBtn').disabled = false;
+    } else {
+        // 맞춤추천
+        await postProfileAndRecommend(profile);
+    }
+}
+
+async function skipProfile(btn) {
+    const card = btn.closest('.chat-card');
+    card.querySelectorAll('button, input').forEach(el => el.disabled = true);
+    addUserMessage('조건 없이 추천받을게요');
+    await postProfileAndRecommend({}, true);
+}
+
+async function postProfileAndRecommend(profile, skip) {
+    showTyping();
+    isWaiting = true;
+    try {
+        // 프로필과 함께 추천 요청을 명시적으로 보냄
+        const activeInterest = pendingInterest && pendingInterest.trim() ? pendingInterest.trim() : '전체';
+        const message = skip ? `조건 없이 ${activeInterest} 추천해줘` : '프로필 입력 완료, 맞춤 추천해줘';
+        const payload = { session_id: SESSION_ID, message: message, interest: activeInterest };
+        if (Object.keys(profile).length > 0) payload.profile = profile;
+        const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        hideTyping();
+        const st = data.state || {};
+        if (st.profile) serverProfile = st.profile;
+        if (typeof st.interest_query === 'string' && st.interest_query.trim()) {
+            pendingInterest = st.interest_query.trim();
+        }
+        if (st.active_clarify === 'CLARIFY_PROFILE') {
+            addBotMessage("추가 정보가 필요해요! 아래에서 입력해주세요.");
+            showProfileCard();
+        } else if (st.active_clarify === 'CLARIFY_PREFERENCE') {
+            addBotMessage("어떤 분야에 관심이 있으세요?");
+            showInterestCardsInChat();
+        } else {
+            addBotMessage(data.response);
+        }
+    } catch(e) { hideTyping(); addBotMessage("오류가 발생했어요."); }
+    isWaiting = false;
+    document.getElementById('sendBtn').disabled = false;
+}
+
+function showInterestCardsInChat() {
+    const container = document.getElementById('chatMessages');
+    const card = document.createElement('div');
+    card.className = 'chat-card';
+    const interests = ['취업', '주거', '창업', '교육', '복지', '참여·문화', '기본소득', '농업', '전체'];
+    card.innerHTML = `
+        <div class="chat-card-title">🎯 관심 분야 선택</div>
+        <div class="interest-grid">
+            ${interests.map(i => `<button class="interest-btn" data-interest="${i}" onclick="onInterestSelected(this, '${i}')">${i}</button>`).join('')}
+        </div>
+    `;
+    container.appendChild(card);
+    scrollToBottom();
+}
+
+function showPolicyCardInChat(candidates) {
+    const container = document.getElementById('chatMessages');
+    const card = document.createElement('div');
+    card.className = 'chat-card';
+    // 후보가 있으면 후보만, 없으면 자격확인 대상 전체
+    const list = (candidates && candidates.length > 0) ? candidates : eligibilityPoliciesList;
+    card.innerHTML = `
+        <div class="chat-card-title">📋 정책 선택</div>
+        <select id="policySelect_clarify">
+            <option value="">정책을 선택하세요</option>
+            ${list.map(p => `<option value="${p.policy_name}">${p.policy_name}</option>`).join('')}
+        </select>
+        <button class="chat-card-btn" onclick="onClarifyPolicySelected(this)">선택 완료</button>
+    `;
+    container.appendChild(card);
+    scrollToBottom();
+}
+
+function onClarifyPolicySelected(btn) {
+    const select = btn.previousElementSibling;
+    const policyName = select.value;
+    if (!policyName) return;
+    btn.disabled = true;
+    select.disabled = true;
+    sendMessage(policyName);
+}
+
+function showAdditionalQuestionCard(aq) {
+    aqSelections = {};
+    currentAqPolicyId = aq.policy_id || null;
+    const container = document.getElementById('chatMessages');
+    const card = document.createElement('div');
+    card.className = 'chat-card';
+    
+    const questions = aq.questions || [];
+    const total = aq.total || questions.length;
+    
+    let questionsHtml = '';
+    questions.forEach((q, idx) => {
+        const answerControl = q.options && q.options.length > 0
+            ? `<div class="pc-chips">${q.options.map(o => `<button class="pc-chip" data-qid="${q.question_id}" data-answer="${o}" onclick="selectAqChip(this)">${o}</button>`).join('')}</div>`
+            : `<input class="aq-text-input" type="${q.question_id === 'birth_date' ? 'date' : 'text'}" data-qid="${q.question_id}" aria-label="${q.question}" oninput="setAqText(this)" placeholder="직접 입력해주세요">`;
+        questionsHtml += `
+            <div class="pc-field">
+                <div class="pc-label">Q${q.q_num || idx+1}. ${q.question}</div>
+                ${answerControl}
+            </div>
+        `;
+    });
+
+    card.innerHTML = `
+        <div class="chat-card-title">📝 추가 자격 조건 확인</div>
+        ${questionsHtml}
+        <button class="chat-card-btn" style="background:#7c3aed;margin-top:10px;" onclick="confirmAdditionalQs(this)">답변 제출하기</button>
+    `;
+    container.appendChild(card);
+    scrollToBottom();
+}
+
+let aqSelections = {};
+let currentAqPolicyId = null;
+
+function selectAqChip(btn) {
+    const qid = btn.dataset.qid;
+    const answer = btn.dataset.answer;
+    // 같은 질문의 다른 칩 해제
+    btn.closest('.pc-chips').querySelectorAll('.pc-chip').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    aqSelections[qid] = answer;
+}
+
+function setAqText(input) {
+    const value = input.value.trim();
+    if (value) aqSelections[input.dataset.qid] = value;
+    else delete aqSelections[input.dataset.qid];
+}
+
+async function confirmAdditionalQs(btn) {
+    const card = btn.closest('.chat-card');
+    const questions = card.querySelectorAll('.pc-field');
+    
+    // 모든 질문에 답했는지 확인
+    let allAnswered = true;
+    questions.forEach(q => {
+        const chipAnswered = !!q.querySelector('.pc-chip.active');
+        const textInput = q.querySelector('.aq-text-input');
+        const textAnswered = !!(textInput && textInput.value.trim());
+        if (!chipAnswered && !textAnswered) allAnswered = false;
+    });
+    if (!allAnswered) {
+        showCardError(card, '모든 질문에 답변해주세요.');
+        return;
+    }
+    
+    card.querySelectorAll('button, input').forEach(el => el.disabled = true);
+    card.style.opacity = '0.7';
+    
+    // 구조화 이벤트로 전송
+    addUserMessage('추가 질문 답변 완료');
+    showTyping();
+    isWaiting = true;
+    
+    try {
+        const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: SESSION_ID,
+                message: '',
+                ui_event: 'SUBMIT_ADDITIONAL_ANSWERS',
+                policy_id: currentAqPolicyId,
+                answers: aqSelections,
+            }),
+        });
+        const data = await res.json();
+        hideTyping();
+        const st = data.state || {};
+        if (st.profile) serverProfile = st.profile;
+        if (st.active_clarify === 'CLARIFY_ADDITIONAL') {
+            const nextAq = st.additional_question;
+            if (nextAq && nextAq.questions) {
+                addBotMessage(data.response);
+                showAdditionalQuestionCard(nextAq);
+            } else {
+                addBotMessage(data.response);
+            }
+        } else {
+            addBotMessage(data.response);
+        }
+    } catch(e) { hideTyping(); addBotMessage("오류가 발생했어요."); }
+    isWaiting = false;
+    aqSelections = {};
+    document.getElementById('sendBtn').disabled = false;
+}
+
+function resetAndShowFullCard(btn) {
+    const card = btn.closest('.chat-card');
+    if (card) {
+        card.querySelectorAll('button, input').forEach(el => el.disabled = true);
+        card.style.opacity = '0.5';
+    } else {
+        btn.disabled = true;
+    }
+    addBotMessage("프로필을 다시 입력해주세요.");
+    // 이전에 표시했던 필드와 동일하게 다시 표시 (lastMissingFields 사용)
+    showProfileCard(lastMissingFields || undefined);
+}
+
+// 마지막으로 표시한 missing_fields 저장
+let lastMissingFields = null;
+
+async function manualSubmitEligibility(btn) {
+    const card = btn.closest('.chat-card');
+    // 모든 필드가 채워졌는지 확인
+    const totalFields = card.querySelectorAll('.pc-field').length;
+    let filledCount = 0;
+    card.querySelectorAll('.pc-field').forEach(f => {
+        const ageInput = f.querySelector('input[type="number"]');
+        if (ageInput) {
+            if (ageInput.value) filledCount++;
+        } else {
+            if (f.querySelector('.pc-chip.active')) filledCount++;
+        }
+    });
+    if (filledCount < totalFields) {
+        showCardError(card, '모든 항목을 입력해주세요.');
+        return;
+    }
+    autoSubmitEligibilityCard(card);
+}
+
+// === 초기화 ===
+async function resetChat() {
+    if (!confirm('대화를 초기화할까요?')) return;
+    try { await fetch('/api/reset', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({session_id:SESSION_ID}) }); } catch(e){}
+    document.getElementById('chatMessages').innerHTML = '';
+    addBotMessage("대화가 초기화되었어요. 아래 버튼을 눌러보세요!");
+}
+
+// 서비스 소개 페이지에서 들어온 경우 시작 화면을 한 번 더 누르지 않고 상담을 시작한다.
+if (new URLSearchParams(window.location.search).get('start') === '1') {
+    startChat();
+}
+</script>
+</body>
+</html>
