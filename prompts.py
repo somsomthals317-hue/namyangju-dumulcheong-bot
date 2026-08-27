@@ -51,6 +51,8 @@ PROMPT_A_INTENT = """당신은 사용자 메시지를 분석하여 Intent와 Sta
 규칙:
 - 복합 질문은 tasks에 여러 값을 넣으세요. 예: "이 정책 설명하고 가능한지 봐줘" → ["EXPLAIN", "ELIGIBILITY"]
 - "이거", "그 정책" 같은 표현은 focus_policy_id가 있으면 해당 정책을 가리킵니다.
+- 반대로 "이거 말고", "다른 정책", "자격 다른 거 확인", "정책을 바꾸고 싶어"는 기존 focus_policy_id를 가리키지 않습니다. 새 정책명이 없으면 policy_mention은 null, tasks는 요청한 작업(자격은 ELIGIBILITY), clarify_reasons에 CLARIFY_POLICY를 넣으세요.
+- 진행 중인 질문이 있어도 사용자가 완전한 문장으로 다른 정책·설명·추천·자격 요청을 하면 카드 답변이 아니라 새 Intent로 판단하세요.
 - 사용자가 "24살"이라고만 하면 만 나이인지 확인이 필요하므로 age에 넣지 말고 clarify_reasons에 표시하지 마세요. "만 24세"라고 명확히 말했을 때만 age에 24를 넣으세요.
 - 관심 분야 없이 추천을 요청하면 CLARIFY_PREFERENCE를 넣으세요.
 - RECOMMEND에 필요한 profile이 부족하면 CLARIFY_PROFILE을 넣으세요.
