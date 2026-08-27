@@ -501,6 +501,16 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None, input_a
             state["messages"].append({"role": "assistant", "content": response})
             return state, response
     
+    # 구조화 카드가 진행 중 Workflow의 질문에 답한 경우 새 Workflow를 만들지 않고 재개한다.
+    if (
+        ui_event in {"SUBMIT_PROFILE", "SUBMIT_RECOMMEND_PROFILE", "SUBMIT_ADDITIONAL_ANSWERS"}
+        and state.get("active_workflow")
+    ):
+        state["active_clarify"] = None
+        response = execute_active_workflow(state, collection, bundles)
+        state["messages"].append({"role": "assistant", "content": response})
+        return state, response
+
     # 1. UI와 자연어를 공통 Action으로 먼저 정규화한다.
     normalized_action = validate_action_payload(input_action)
     if not normalized_action and not ui_event:
