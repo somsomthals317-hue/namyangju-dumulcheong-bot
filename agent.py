@@ -12,7 +12,7 @@ load_dotenv()
 from openai import OpenAI
 from state import (
     get_profile_status, get_missing_profile_fields,
-    get_policy_needed_fields, update_profile, save_policy_answer,
+    get_policy_needed_fields, update_profile, save_policy_answer, reset_task_context,
 )
 from prompts import (
     SYSTEM_PROMPT, PROMPT_A_INTENT, PROMPT_B_SELECT, PROMPT_B_EXPLAIN,
@@ -216,27 +216,50 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None):
             state["_policy_mention"] = user_message.strip()
     else:
         # 2. Active Clarify에 대한 답변인지 확인
-        #    단, 명확한 새 task 요청이면 Clarify를 취소하고 새 작업으로 전환
+        #    구조화된 짧은 답변은 현재 카드가 처리하고, 작업 전환 가능성이 있는
+        #    자유 문장은 GPT Intent가 새 작업/정책 변경/취소 여부를 재분류한다.
+        preclassified_tasks, preclassified_clarifies = None, []
         if state["active_clarify"]:
-            if (
-                is_explicit_new_request(user_message, state["active_clarify"])
-                or _is_other_policy_switch_request(user_message)
-            ):
-                state["active_clarify"] = None
-                state["pending_tasks"] = []
-                state.pop("_active_additional_q", None)
-                state.pop("_partial_results", None)
-                state.pop("_policy_candidates", None)
+            active_clarify = state["active_clarify"]
+            if _is_other_policy_switch_request(user_message):
+                reset_task_context(state)
+            elif _should_reclassify_clarify_with_ai(user_message, active_clarify, bundles):
+                probe_tasks, probe_clarifies = analyze_user_turn(state, user_message)
+                turn_kind = state.pop("_intent_turn_kind", "")
+                if turn_kind == "CANCEL":
+                    reset_task_context(state)
+                    response = "진행 중이던 질문을 취소했어요. 정책 설명, 맞춤 추천, 자격 확인 중 무엇을 도와드릴까요?"
+                    state["messages"].append({"role": "assistant", "content": response})
+                    return state, response
+                if probe_tasks and turn_kind in {"NEW_TASK", "SWITCH_POLICY"}:
+                    preclassified_tasks = probe_tasks
+                    preclassified_clarifies = probe_clarifies
+                elif is_explicit_new_request(user_message, active_clarify):
+                    reset_task_context(
+                        state,
+                        keep_focus=_has_focus_reference(user_message),
+                    )
+                else:
+                    response = handle_clarify_answer(state, user_message, collection, bundles)
+                    state["messages"].append({"role": "assistant", "content": response})
+                    return state, response
+            elif is_explicit_new_request(user_message, active_clarify):
+                reset_task_context(
+                    state,
+                    keep_focus=_has_focus_reference(user_message),
+                )
             else:
                 response = handle_clarify_answer(state, user_message, collection, bundles)
                 state["messages"].append({"role": "assistant", "content": response})
                 return state, response
         
         # 2.5 프론트 버튼에서 온 명시적 패턴 → Prompt A 안 타고 바로 확정
-        tasks, clarify_reasons = None, []
+        tasks, clarify_reasons = preclassified_tasks, preclassified_clarifies
         msg = user_message.strip() if user_message else ""
         
-        if _is_other_policy_switch_request(msg):
+        if tasks is not None:
+            pass
+        elif _is_other_policy_switch_request(msg):
             # 기존 정책을 명시적으로 배제하면 예전 focus를 재사용하지 않는다.
             state["focus_policy_id"] = None
             state["selected_policy_id"] = None
@@ -331,6 +354,9 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None):
             interest = normalize_interests(msg)
             if interest:
                 state["interest_query"] = interest
+            else:
+                # 새 추천에 분야가 없으면 이전 추천 분야를 재사용하지 않는다.
+                state["interest_query"] = None
             tasks = ["RECOMMEND"]
             if "조건 없이" in msg:
                 state["_skip_profile_check"] = True
@@ -385,6 +411,10 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None):
                     tasks.append("ELIGIBILITY")
             else:
                 tasks = ["ELIGIBILITY"]
+            # 정책명도 지시어도 없는 새 자격 요청은 과거 focus를 재사용하지 않는다.
+            if not state.get("_policy_mention") and not _has_focus_reference(user_message):
+                state["focus_policy_id"] = None
+                state["selected_policy_id"] = None
             # GPT가 축약 정책명을 놓쳐도 공식 별칭 사전으로 대상 정책을 확정한다.
             if not state.get("_policy_mention"):
                 alias_policy_id = resolve_policy_alias(user_message)
@@ -501,7 +531,7 @@ def route_ui_event(event, state):
 
 
 def analyze_user_turn(state, user_message):
-    """Prompt A로 Intent 분석"""
+    """Prompt A로 Intent와 작업 전환 여부를 구조화 분석한다."""
     recent = state["messages"][-6:] if len(state["messages"]) > 6 else state["messages"]
     recent_text = "\n".join([f"{m['role']}: {m['content']}" for m in recent])
     
@@ -513,31 +543,12 @@ def analyze_user_turn(state, user_message):
         recent_messages=recent_text,
     )
     
-    response_text = call_gemini(prompt)
+    response_text = call_openai(prompt, json_mode=True)
     result = parse_json_response(response_text)
     
     if not result:
         # Intent를 해석하지 못했을 때 임의 정책을 설명하지 않는다.
         return [], []
-    
-    # Profile patch 적용
-    patch = result.get("profile_patch", {})
-    if patch:
-        clean_patch = {k: v for k, v in patch.items() if v is not None}
-        if clean_patch:
-            update_profile(state, clean_patch)
-    
-    # interest_query 저장
-    if result.get("interest_query"):
-        state["interest_query"] = result["interest_query"]
-    
-    # policy_mention으로 focus 설정 시도
-    if result.get("policy_mention"):
-        state["_policy_mention"] = result["policy_mention"]
-    
-    # rewritten_query 저장 (EXPLAIN에서 사용)
-    if result.get("rewritten_query"):
-        state["_rewritten_query"] = result["rewritten_query"]
     
     raw_tasks = result.get("tasks", [])
     if not isinstance(raw_tasks, list):
@@ -547,12 +558,49 @@ def analyze_user_turn(state, user_message):
     if not isinstance(raw_clarifies, list):
         raw_clarifies = []
     clarify_reasons = [
-        c for c in raw_clarifies
-        if c in ("CLARIFY_POLICY", "CLARIFY_PREFERENCE", "CLARIFY_PROFILE")
+        item for item in raw_clarifies
+        if item in ("CLARIFY_POLICY", "CLARIFY_PREFERENCE", "CLARIFY_PROFILE")
     ]
+
+    turn_kind = result.get("turn_kind")
+    if turn_kind not in {"CLARIFY_ANSWER", "NEW_TASK", "SWITCH_POLICY", "CANCEL", "SMALL_TALK"}:
+        turn_kind = "NEW_TASK" if tasks else "SMALL_TALK"
+    reuse_focus = result.get("reuse_focus") is True and turn_kind != "SWITCH_POLICY"
+    confidence = result.get("confidence")
+    if confidence not in {"high", "medium", "low"}:
+        confidence = "low"
+
+    # 새 작업이면 카드·검색 임시값을 한 번에 정리한다. Profile은 유지하고,
+    # 직전 정책을 명시적으로 가리킨 경우에만 focus를 보존한다.
+    if turn_kind in {"NEW_TASK", "SWITCH_POLICY", "CANCEL"}:
+        reset_task_context(state, keep_focus=reuse_focus, keep_interest=False)
+
+    # Profile patch 적용
+    patch = result.get("profile_patch", {})
+    if isinstance(patch, dict):
+        clean_patch = {k: v for k, v in patch.items() if v is not None}
+        if clean_patch:
+            update_profile(state, clean_patch)
+    
+    # 추천 분야는 새 Intent 결과에 있을 때만 저장한다. 새 추천인데 null이면
+    # reset_task_context가 지운 상태를 유지하여 CLARIFY_PREFERENCE로 보낸다.
+    interest_value = result.get("interest_query")
+    if interest_value:
+        normalized_interest = normalize_interests(interest_value)
+        state["interest_query"] = normalized_interest or interest_value
+    
+    # 새 정책 언급을 저장한다. 없고 reuse_focus도 false면 이전 정책은 이미 지워졌다.
+    if result.get("policy_mention"):
+        state["_policy_mention"] = result["policy_mention"]
+    
+    if result.get("rewritten_query"):
+        state["_rewritten_query"] = result["rewritten_query"]
+
+    state["_intent_turn_kind"] = turn_kind
+    state["_intent_reuse_focus"] = reuse_focus
+    state["_intent_confidence"] = confidence
     
     return tasks, clarify_reasons
-
 
 def validate_clarify_reasons(state, tasks, clarify_reasons):
     """Clarify 필요 여부를 State와 대조하여 검증"""
@@ -659,7 +707,7 @@ def handle_clarify_answer(state, user_message, collection, bundles):
 {{"age": null 또는 정수, "residency": null 또는 "예"/"아니오", "employment": null 또는 "취업"/"미취업", "student": null 또는 해당값, "startup": null 또는 해당값, "housing": null 또는 해당값, "marriage": null 또는 해당값}}
 
 규칙: 명확히 알 수 있는 값만 채우고 나머지는 null로 두세요. "만 24세" → age: 24"""
-                resp = call_gemini(parse_prompt)
+                resp = call_openai(parse_prompt, json_mode=True)
                 patch = parse_json_response(resp)
                 if patch:
                     clean_patch = {k: v for k, v in patch.items() if v is not None}
@@ -2020,7 +2068,7 @@ def review_eligibility_with_ai(bundle, profile, existing_answers, rule_result):
         existing_answers=json.dumps(existing_answers, ensure_ascii=False),
         rule_result=json.dumps(rule_result, ensure_ascii=False),
     )
-    raw = call_openai(prompt)
+    raw = call_openai(prompt, json_mode=True)
     if not raw or raw.startswith("[ERROR]"):
         return None
     return merge_eligibility_review(rule_result, parse_json_response(raw))
@@ -2236,6 +2284,41 @@ def _extract_policy_mention(message):
     if mention.strip() in ("이", "그", "저"):
         mention = mention.strip() + " 정책"
     return mention.strip()
+
+FOCUS_REFERENCE_PATTERNS = (
+    "이 정책", "그 정책", "방금 정책", "아까 정책", "위 정책", "이거", "그거",
+)
+
+
+def _has_focus_reference(message):
+    msg = (message or "").strip()
+    return any(reference in msg for reference in FOCUS_REFERENCE_PATTERNS)
+
+
+def _should_reclassify_clarify_with_ai(message, active_clarify, bundles):
+    """카드 답변처럼 보이지 않는 자유 문장을 GPT Intent에 다시 보낼지 결정한다."""
+    msg = (message or "").strip()
+    if not msg or msg in CLARIFY_ANSWER_VALUES:
+        return False
+    if ":" in msg and "|" in msg:
+        return False
+
+    task_or_switch = bool(re.search(
+        r"말고|다른|바꾸|취소|그만|넘어가|됐고|새로|처음부터|"
+        r"정책|추천|설명|자격|알려|찾아|신청|지원|도움|보고\s*싶",
+        msg,
+    ))
+    if not task_or_switch:
+        return False
+
+    # 정책 선택 카드에서 동사 없는 정책명·별칭은 현재 질문의 정상 답변이다.
+    if active_clarify == "CLARIFY_POLICY":
+        direct_policy = resolve_policy_alias(msg) or _contains_exact_policy_name(bundles, msg)
+        request_verb = bool(re.search(r"추천|설명|자격|알려|찾아|바꾸|말고|다른", msg))
+        if direct_policy and not request_verb:
+            return False
+    return True
+
 
 # Clarify 중에도 새 작업으로 전환시키는 명시적 요청 패턴
 NEW_REQUEST_PATTERNS = [
