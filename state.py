@@ -82,6 +82,39 @@ def get_policy_needed_fields(bundle):
     return needed
 
 
+
+TASK_TRANSIENT_KEYS = (
+    "_active_additional_q",
+    "_partial_results",
+    "_policy_candidates",
+    "_explore_mode",
+    "_skip_profile_check",
+    "_missing_fields",
+    "_original_query",
+    "_rewritten_query",
+    "_policy_mention",
+    "_recommend_query",
+    "_pending_age_confirmation",
+    "_intent_turn_kind",
+    "_intent_reuse_focus",
+    "_intent_confidence",
+)
+
+
+def reset_task_context(state, keep_focus=False, keep_interest=False):
+    """새 작업을 시작할 때 이전 카드·검색·선택 상태가 섞이지 않게 정리한다."""
+    state["active_clarify"] = None
+    state["pending_tasks"] = []
+    state["selected_policy_id"] = None
+    state["resume_step"] = None
+    for key in TASK_TRANSIENT_KEYS:
+        state.pop(key, None)
+    if not keep_focus:
+        state["focus_policy_id"] = None
+    if not keep_interest:
+        state["interest_query"] = None
+    return state
+
 def update_profile(state, patch):
     """Profile을 patch로 업데이트"""
     for key, value in patch.items():

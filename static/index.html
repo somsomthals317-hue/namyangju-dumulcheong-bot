@@ -344,10 +344,29 @@
 // sessionStorage로 세션 유지 (새로고침 시 유지, 탭 닫으면 삭제)
 let SESSION_ID = sessionStorage.getItem('dumoolchung_session');
 if (!SESSION_ID) {
-    SESSION_ID = 'session_' + Date.now();
+    SESSION_ID = 'session_' + (
+        crypto.randomUUID
+            ? crypto.randomUUID()
+            : `${Date.now()}_${Math.random().toString(16).slice(2)}`
+    );
     sessionStorage.setItem('dumoolchung_session', SESSION_ID);
 }
 let isWaiting = false;
+
+async function apiFetch(url, options = {}, timeoutMs = 60000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return response;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 // window에 노출 (자동 테스트에서 상태 확인용)
 window.policiesList = [];
 window.eligibilityPoliciesList = [];
@@ -363,7 +382,7 @@ function startChat() {
 
 async function loadPolicies() {
     try {
-        const res = await fetch('/api/policies');
+        const res = await apiFetch('/api/policies');
         const data = await res.json();
         policiesList = data.policies || [];
         eligibilityPoliciesList = data.eligibility_policies || [];
@@ -393,6 +412,9 @@ function formatResponse(text) {
     // 1b) [ACTION_BTN:type:label] → 액션 버튼
     html = html.replace(/\[ACTION_BTN:RESET_PROFILE:([^\]]+)\]/g, '<button class="elig-btn" onclick="resetAndShowFullCard(this)">👤 $1</button>');
     html = html.replace(/\[ACTION_BTN:RESET_CHAT:([^\]]+)\]/g, '<button class="elig-btn" onclick="resetChat()">🔄 $1</button>');
+    html = html.replace(/\[ACTION_BTN:EDIT_ADDITIONAL:([^:]+):([^\]]+)\]/g, (m, id, label) => {
+        return `<button class="elig-btn" onclick="editAdditionalAnswers('${id}', this)">✏️ ${label}</button>`;
+    });
 
     // 2) [text](url) 마크다운 링크 → <a> (이스케이프 전에 처리)
     html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" style="color:#1a5276;">$1</a>');
@@ -492,7 +514,7 @@ async function startRecommend() {
     // 서버에 START_RECOMMEND 이벤트로 이전 작업 정리
     isWaiting = true;
     try {
-        const res = await fetch('/api/chat', {
+        const res = await apiFetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ session_id: SESSION_ID, message: '', ui_event: 'START_RECOMMEND_RESET' }),
@@ -690,7 +712,7 @@ async function submitRecommendProfile(btn) {
     isWaiting = true;
 
     try {
-        const res = await fetch('/api/chat', {
+        const res = await apiFetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -724,7 +746,7 @@ async function exploreWithoutProfile(btn) {
     showTyping();
     isWaiting = true;
     try {
-        const res = await fetch('/api/chat', {
+        const res = await apiFetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -769,7 +791,7 @@ async function sendMessage(overrideText) {
     showTyping();
 
     try {
-        const res = await fetch('/api/chat', {
+        const res = await apiFetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ session_id: SESSION_ID, message: text }),
@@ -866,7 +888,7 @@ async function submitProfile() {
     isWaiting = true;
 
     try {
-        const res = await fetch('/api/chat', {
+        const res = await apiFetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ session_id: SESSION_ID, message: '프로필 설정 완료', profile: filtered }),
@@ -919,7 +941,7 @@ async function autoSubmitEligibilityCard(card) {
     isWaiting = true;
     
     try {
-        const res = await fetch('/api/chat', {
+        const res = await apiFetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ session_id: SESSION_ID, message: '', ui_event: 'SUBMIT_PROFILE', profile: profile }),
@@ -1062,7 +1084,7 @@ async function submitProfileCard(btn) {
         showTyping();
         isWaiting = true;
         try {
-            const res = await fetch('/api/chat', {
+            const res = await apiFetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ session_id: SESSION_ID, message: '', ui_event: 'SUBMIT_PROFILE', profile: profile }),
@@ -1111,7 +1133,7 @@ async function postProfileAndRecommend(profile, skip) {
         const message = skip ? `조건 없이 ${activeInterest} 추천해줘` : '프로필 입력 완료, 맞춤 추천해줘';
         const payload = { session_id: SESSION_ID, message: message, interest: activeInterest };
         if (Object.keys(profile).length > 0) payload.profile = profile;
-        const res = await fetch('/api/chat', {
+        const res = await apiFetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -1188,6 +1210,14 @@ function showAdditionalQuestionCard(aq) {
     
     const questions = aq.questions || [];
     const total = aq.total || questions.length;
+    const batchStart = aq.batch_start || (questions[0] && questions[0].q_num) || 1;
+    const batchEnd = aq.batch_end || (
+        questions.length ? batchStart + questions.length - 1 : batchStart
+    );
+    const remaining = Number.isFinite(aq.remaining) ? aq.remaining : questions.length;
+    const submitLabel = batchEnd < total
+        ? '답변 제출하고 다음 질문'
+        : '답변 제출하고 결과 보기';
     
     let questionsHtml = '';
     questions.forEach((q, idx) => {
@@ -1204,8 +1234,11 @@ function showAdditionalQuestionCard(aq) {
 
     card.innerHTML = `
         <div class="chat-card-title">📝 추가 자격 조건 확인</div>
+        <div style="font-size:13px;color:#64748b;margin:2px 0 12px;">
+            전체 ${total}개 중 ${batchStart}~${batchEnd}번 · ${remaining}개 남음
+        </div>
         ${questionsHtml}
-        <button class="chat-card-btn" style="background:#7c3aed;margin-top:10px;" onclick="confirmAdditionalQs(this)">답변 제출하기</button>
+        <button class="chat-card-btn" style="background:#7c3aed;margin-top:10px;" onclick="confirmAdditionalQs(this)">${submitLabel}</button>
     `;
     container.appendChild(card);
     scrollToBottom();
@@ -1255,7 +1288,7 @@ async function confirmAdditionalQs(btn) {
     isWaiting = true;
     
     try {
-        const res = await fetch('/api/chat', {
+        const res = await apiFetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1285,6 +1318,45 @@ async function confirmAdditionalQs(btn) {
     isWaiting = false;
     aqSelections = {};
     document.getElementById('sendBtn').disabled = false;
+}
+
+async function editAdditionalAnswers(policyId, btn) {
+    if (isWaiting) return;
+    btn.disabled = true;
+    showTyping();
+    isWaiting = true;
+    document.getElementById('sendBtn').disabled = true;
+
+    try {
+        const res = await apiFetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: SESSION_ID,
+                message: '',
+                ui_event: 'EDIT_ADDITIONAL_ANSWERS',
+                policy_id: policyId,
+            }),
+        });
+        const data = await res.json();
+        const st = data.state || {};
+        addBotMessage(data.response);
+        if (st.active_clarify === 'CLARIFY_ADDITIONAL') {
+            const aq = st.additional_question;
+            if (aq && aq.questions) showAdditionalQuestionCard(aq);
+        }
+    } catch (e) {
+        addBotMessage(
+            e && e.name === 'AbortError'
+                ? '응답 시간이 길어 요청을 종료했어요. 다시 시도해주세요.'
+                : '추가 답변을 다시 불러오지 못했어요. 잠시 후 다시 시도해주세요.'
+        );
+        btn.disabled = false;
+    } finally {
+        hideTyping();
+        isWaiting = false;
+        document.getElementById('sendBtn').disabled = false;
+    }
 }
 
 function resetAndShowFullCard(btn) {
@@ -1326,7 +1398,7 @@ async function manualSubmitEligibility(btn) {
 // === 초기화 ===
 async function resetChat() {
     if (!confirm('대화를 초기화할까요?')) return;
-    try { await fetch('/api/reset', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({session_id:SESSION_ID}) }); } catch(e){}
+    try { await apiFetch('/api/reset', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({session_id:SESSION_ID}) }); } catch(e){}
     document.getElementById('chatMessages').innerHTML = '';
     addBotMessage("대화가 초기화되었어요. 아래 버튼을 눌러보세요!");
 }
