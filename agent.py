@@ -1867,6 +1867,10 @@ def run_eligibility(state, bundles):
                 for i, q in enumerate(batch)
             ],
             "total": len(additional_qs),
+            "answered": len(existing_answers),
+            "remaining": len(unanswered),
+            "batch_start": q_start,
+            "batch_end": q_start + len(batch) - 1,
         }
         state["active_clarify"] = "CLARIFY_ADDITIONAL"
         state["pending_tasks"] = ["ELIGIBILITY"]
@@ -1893,7 +1897,13 @@ def run_eligibility(state, bundles):
     # _active_additional_q 클리어
     state.pop("_active_additional_q", None)
     
-    return format_eligibility_response(bundle["policy_name"], result, bundle.get("source", ""))
+    return format_eligibility_response(
+        bundle["policy_name"],
+        result,
+        bundle.get("source", ""),
+        policy_id=policy_id,
+        has_additional=bool(additional_qs),
+    )
 
 
 NEGATIVE_ELIGIBILITY_QUESTION_IDS = {
@@ -2074,7 +2084,9 @@ def review_eligibility_with_ai(bundle, profile, existing_answers, rule_result):
     return merge_eligibility_review(rule_result, parse_json_response(raw))
 
 
-def format_eligibility_response(policy_name, result, source=""):
+def format_eligibility_response(
+    policy_name, result, source="", policy_id=None, has_additional=False
+):
     """자격 판정 결과를 텍스트로 포맷 (마크다운 없이 채팅체)"""
     status = result.get("eligibility_status", "UNKNOWN")
     lines = [f"📋 {policy_name} 자격 확인 결과\n"]
@@ -2119,6 +2131,11 @@ def format_eligibility_response(policy_name, result, source=""):
     link = _official_policy_link(source)
     if link:
         lines.append(f"\n{link}")
+
+    if has_additional and policy_id:
+        lines.append(
+            f"\n[ACTION_BTN:EDIT_ADDITIONAL:{policy_id}:추가 답변 다시 입력하기]"
+        )
     
     # FAIL 또는 UNKNOWN이면 액션 버튼 추가
     if status in ("FAIL", "UNKNOWN"):
