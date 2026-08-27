@@ -1,0 +1,39 @@
+name: Policy agent hardening CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - codex/harden-gpt-state-ci
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Compile Python sources
+        run: python -m compileall -q agent.py state.py data_loader.py server.py prompts.py test_intent_regression.py test_hardening.py
+
+      - name: Run intent and hardening regressions
+        run: python -m unittest test_intent_regression.py test_hardening.py -v
+
+      - name: Check inline frontend JavaScript syntax
+        run: |
+          python -c "from pathlib import Path; html=Path('static/index.html').read_text(encoding='utf-8'); script=html.rsplit('<script>', 1)[1].split('</script>', 1)[0]; Path('frontend-inline.js').write_text(script, encoding='utf-8')"
+          node --check frontend-inline.js
