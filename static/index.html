@@ -412,6 +412,7 @@ function formatResponse(text) {
     // 1b) [ACTION_BTN:type:label] → 액션 버튼
     html = html.replace(/\[ACTION_BTN:RESET_PROFILE:([^\]]+)\]/g, '<button class="elig-btn" onclick="resetAndShowFullCard(this)">👤 $1</button>');
     html = html.replace(/\[ACTION_BTN:RESET_CHAT:([^\]]+)\]/g, '<button class="elig-btn" onclick="resetChat()">🔄 $1</button>');
+    html = html.replace(/\[ACTION_BTN:SHOW_ALTERNATIVES:([^\]]+)\]/g, '<button class="elig-btn" onclick="showAlternatives()">$1</button>');
     html = html.replace(/\[ACTION_BTN:EDIT_ADDITIONAL:([^:]+):([^\]]+)\]/g, (m, id, label) => {
         return `<button class="elig-btn" onclick="editAdditionalAnswers('${id}', this)">✏️ ${label}</button>`;
     });
@@ -554,16 +555,23 @@ function onPolicySelected(btn, mode) {
     const select = btn.previousElementSibling;
     const policyName = select.value;
     if (!policyName) return;
-
-    // 카드 비활성화
     btn.disabled = true;
     select.disabled = true;
 
-    if (mode === 'EXPLAIN') {
-        sendMessage(`${policyName} 정책에 대해 알려줘`);
-    } else {
-        sendMessage(`${policyName} 자격 확인해줘`);
-    }
+    const policy = [...policiesList, ...eligibilityPoliciesList]
+        .find(item => item.policy_name === policyName);
+    const policyId = policy ? policy.policy_id : null;
+    const isExplain = mode === 'EXPLAIN';
+    return dispatchAction({
+        action: isExplain ? 'SEARCH_POLICY' : 'CHECK_ELIGIBILITY',
+        tasks: [isExplain ? 'EXPLAIN' : 'ELIGIBILITY'],
+        policy_id: policyId,
+        policy_mention: policyName,
+        use_previous_context: false,
+        confidence: 'high',
+    }, isExplain
+        ? `${policyName} 정책에 대해 알려줘`
+        : `${policyName} 자격 확인해줘`);
 }
 
 // === 🎯 맞춤 추천받기 → 관심분야 카드 ===
@@ -773,11 +781,31 @@ function onInterestSelected(btn, interest) {
 
 // === 자격확인 버튼 (UNKNOWN 정책에서) ===
 function checkEligibility(policyId, policyName) {
-    sendMessage(`${policyName} 자격 확인해줘`);
+    return dispatchAction({
+        action: 'CHECK_ELIGIBILITY',
+        tasks: ['ELIGIBILITY'],
+        policy_id: policyId,
+        policy_mention: policyName,
+        use_previous_context: false,
+        confidence: 'high',
+    }, `${policyName} 자격 확인해줘`);
 }
 
-// === 메시지 전송 ===
-async function sendMessage(overrideText) {
+function showAlternatives() {
+    return dispatchAction({
+        action: 'SHOW_ALTERNATIVES',
+        tasks: ['RECOMMEND'],
+        use_previous_context: true,
+        confidence: 'high',
+    }, '다른 정책 보기');
+}
+
+function dispatchAction(action, displayText) {
+    return sendMessage(displayText, action);
+}
+
+// === 메시지 전송: 자연어와 버튼은 같은 API/렌더링 경로 ===
+async function sendMessage(overrideText, actionPayload = null) {
     const input = document.getElementById('chatInput');
     const text = overrideText || input.value.trim();
     if (!text) return;
@@ -794,7 +822,11 @@ async function sendMessage(overrideText) {
         const res = await apiFetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: SESSION_ID, message: text }),
+            body: JSON.stringify({
+                session_id: SESSION_ID,
+                message: text,
+                ...(actionPayload ? { action: actionPayload } : {}),
+            }),
         });
         const data = await res.json();
         hideTyping();
