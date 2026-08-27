@@ -49,19 +49,53 @@ class ActionNormalizationTests(unittest.TestCase):
         self.assertEqual(action["action"], "SHOW_ALTERNATIVES")
         self.assertIn("AGRI-1", action["exclude_policy_ids"])
 
-    def test_follow_up_keeps_policy(self):
-        action = agent.detect_navigation_action(
-            self.state, "그 정책 신청 기간은?", BUNDLES
+    def test_explain_and_recommend_keep_separate_targets_and_both_return(self):
+        state = get_default_state()
+        state["_intent_workflow"] = [
+            {
+                "task": "EXPLAIN",
+                "policy_mention": "취업성공 프로젝트",
+                "topic": None,
+            },
+            {
+                "task": "RECOMMEND",
+                "policy_mention": None,
+                "topic": "농업",
+            },
+        ]
+        agent.start_active_workflow(
+            state,
+            ["EXPLAIN", "RECOMMEND"],
+            "취업성공 프로젝트를 설명하고 농업 정책도 추천해줘",
         )
-        self.assertEqual(action["action"], "FOLLOW_UP")
-        self.assertEqual(action["follow_up_field"], "application_period")
-        tasks, clarifies, response = agent.apply_action_transition(
-            self.state, action, BUNDLES
+        seen = []
+
+        def fake_explain(current_state, query, collection):
+            seen.append(("EXPLAIN", current_state.get("_policy_mention")))
+            return "취업성공 프로젝트 설명"
+
+        def fake_recommend(current_state, bundles):
+            seen.append(("RECOMMEND", current_state.get("interest_query")))
+            current_state["last_result_policy_ids"] = ["AGRI-1"]
+            return "농업 정책 추천"
+
+        with patch.object(agent, "run_explain", side_effect=fake_explain), patch.object(
+            agent, "run_recommend", side_effect=fake_recommend
+        ):
+            response = agent.execute_active_workflow(state, object(), BUNDLES)
+
+        self.assertEqual(
+            seen,
+            [
+                ("EXPLAIN", "취업성공 프로젝트"),
+                ("RECOMMEND", "농업"),
+            ],
         )
-        self.assertEqual(tasks, ["EXPLAIN"])
-        self.assertEqual(clarifies, [])
-        self.assertIsNone(response)
-        self.assertEqual(self.state["current_policy_id"], "AGRI-1")
+        self.assertIn("[정책 설명]", response)
+        self.assertIn("취업성공 프로젝트 설명", response)
+        self.assertIn("[맞춤 추천 결과]", response)
+        self.assertIn("농업 정책 추천", response)
+        self.assertEqual(state["current_topic"], "농업")
 
     def test_button_and_natural_alternative_have_same_transition(self):
         natural = agent.detect_navigation_action(
