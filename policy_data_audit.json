@@ -1,0 +1,320 @@
+{
+  "status": "PASS",
+  "counts": {
+    "zip_origins": 32,
+    "extracted_origins": 32,
+    "summaries": 32,
+    "eligibility_rules": 32,
+    "additional_questions": 56
+  },
+  "errors": [],
+  "warnings": [],
+  "policies": [
+    {
+      "policy_id": "NYJ-YOUTH-001",
+      "policy_name": "지역주도형 청년일자리사업",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2919",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-002",
+      "policy_name": "일자리카페",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2920",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-003",
+      "policy_name": "취업성공 프로젝트",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2921",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-004",
+      "policy_name": "경기청년 역량강화 기회지원사업(응시료지원)",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2922",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-005",
+      "policy_name": "면접준비 청년 헤어스타일링 지원",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=4718",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-006",
+      "policy_name": "말산업 청년인턴취업지원",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2923",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-007",
+      "policy_name": "청년 행정체험 연수(구 대학생 시정업무체험)",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2944",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-008",
+      "policy_name": "남양주형 청년 인재 플랫폼(정약용 후예)",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=4805",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-009",
+      "policy_name": "청년성장 프로젝트(청년꿈틀)",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=4974",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-010",
+      "policy_name": "청년기본소득",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2925",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-011",
+      "policy_name": "청년월세 지원사업",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2926",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-012",
+      "policy_name": "청년내일저축계좌",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=4400",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-013",
+      "policy_name": "청년 주거급여",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2928",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-014",
+      "policy_name": "청년마음건강센터",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2930",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-015",
+      "policy_name": "청년정신건강증진사업",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2931",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-016",
+      "policy_name": "입영지원금 지원",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2933",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-017",
+      "policy_name": "청년농업인 영농정착 지원",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2934",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-018",
+      "policy_name": "농업인자녀 대학생 학자금 이자지원",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2936",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-019",
+      "policy_name": "청춘야학당 교육 프로그램",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2938",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-020",
+      "policy_name": "청년창업 교육프로그램",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2940",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-021",
+      "policy_name": "청년창업 컨설팅",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2941",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-022",
+      "policy_name": "청년 참여·문화 사업",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=4804",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-023",
+      "policy_name": "청년꽃간",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=4806",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-024",
+      "policy_name": "대학생 플래너즈",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2945",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-YOUTH-025",
+      "policy_name": "청년예술인 지원",
+      "service_type": "POLICY",
+      "eligibility_mode": "FULL",
+      "recommendation_interests": [],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2947",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-EXPLAIN-001",
+      "policy_name": "청년정책 소개",
+      "service_type": "INFORMATION",
+      "eligibility_mode": "INFO_ONLY",
+      "recommendation_interests": [
+        "전체"
+      ],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2915",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-EXPLAIN-002",
+      "policy_name": "남양주시 청년창업센터",
+      "service_type": "FACILITY",
+      "eligibility_mode": "INFO_ONLY",
+      "recommendation_interests": [
+        "창업",
+        "교육",
+        "참여·문화"
+      ],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=2917",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-EXPLAIN-003",
+      "policy_name": "배움공간(4층)",
+      "service_type": "FACILITY",
+      "eligibility_mode": "INFO_ONLY",
+      "recommendation_interests": [
+        "창업",
+        "교육"
+      ],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=4357",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-EXPLAIN-004",
+      "policy_name": "소통공간(3층)",
+      "service_type": "FACILITY",
+      "eligibility_mode": "INFO_ONLY",
+      "recommendation_interests": [
+        "창업",
+        "참여·문화"
+      ],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=4356",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-EXPLAIN-005",
+      "policy_name": "창업공간(1층)",
+      "service_type": "FACILITY",
+      "eligibility_mode": "INFO_ONLY",
+      "recommendation_interests": [
+        "창업"
+      ],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=4354",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-EXPLAIN-006",
+      "policy_name": "창업공간(2층)",
+      "service_type": "FACILITY",
+      "eligibility_mode": "INFO_ONLY",
+      "recommendation_interests": [
+        "창업"
+      ],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=4355",
+      "zip_equal": true
+    },
+    {
+      "policy_id": "NYJ-EXPLAIN-007",
+      "policy_name": "키움식당(5층)",
+      "service_type": "FACILITY",
+      "eligibility_mode": "INFO_ONLY",
+      "recommendation_interests": [
+        "창업"
+      ],
+      "source": "https://www.nyj.go.kr/www/contents.do?key=4358",
+      "zip_equal": true
+    }
+  ]
+}

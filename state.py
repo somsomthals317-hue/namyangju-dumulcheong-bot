@@ -1,0 +1,99 @@
+"""
+Agent State 관리
+- 세션 단위로 유지
+- Profile, focus, pending_tasks, policy_answers 등
+"""
+
+
+def get_default_state():
+    """기본 세션 State 생성"""
+    return {
+        # 사용자 Profile (7개)
+        "profile": {
+            "age": None,
+            "residency": None,
+            "employment": None,
+            "student": None,
+            "startup": None,
+            "housing": None,
+            "marriage": None,
+        },
+        # 관심 분야
+        "interest_query": None,
+        # 현재 포커스된 정책
+        "focus_policy_id": None,
+        # 자격확인 중인 정책
+        "selected_policy_id": None,
+        # 대화 메시지 기록
+        "messages": [],
+        # Clarify 관련
+        "pending_tasks": [],
+        "active_clarify": None,
+        "resume_step": None,
+        # 정책별 추가 질문 답변 저장
+        "policy_answers": {},
+        # 상태
+        "profile_status": "INCOMPLETE",  # INCOMPLETE | COMPLETE
+    }
+
+
+def get_profile_status(profile):
+    """Profile 완성 여부 체크"""
+    required = ["age", "residency", "employment", "student", "startup", "housing", "marriage"]
+    for field in required:
+        if profile.get(field) is None:
+            return "INCOMPLETE"
+    return "COMPLETE"
+
+
+def get_missing_profile_fields(profile):
+    """부족한 Profile 필드 목록 반환"""
+    required = ["age", "residency", "employment", "student", "startup", "housing", "marriage"]
+    missing = []
+    for field in required:
+        if profile.get(field) is None:
+            missing.append(field)
+    return missing
+
+
+PROFILE_KEYS = ["age", "residency", "employment", "student", "startup", "housing", "marriage"]
+
+
+def get_policy_needed_fields(bundle):
+    """
+    특정 정책이 실제로 필요한 공통 Profile 필드만 반환.
+    - basic_condition이 "해당없음"인 항목은 제외
+    - 공통 Profile 7개에 없는 키(예: income)는 제외 (additional_questions로 처리)
+    """
+    basic = bundle.get("basic_condition", {})
+    needed = []
+    for key, value in basic.items():
+        if key not in PROFILE_KEYS:
+            continue
+        if value and value != "해당없음":
+            # 공통 Profile 선택지로 직접 비교할 수 있는 조건만 묻는다.
+            # 예: "면접 예정", "영농경력 3년 이하"는 취업/미취업 카드로
+            # 답할 수 없으므로 정책별 additional_questions가 담당한다.
+            if key == "employment" and not (
+                "미취업" in str(value) or str(value).startswith("재직자")
+            ):
+                continue
+            needed.append(key)
+    return needed
+
+
+def update_profile(state, patch):
+    """Profile을 patch로 업데이트"""
+    for key, value in patch.items():
+        if key in state["profile"] and value is not None:
+            state["profile"][key] = value
+    state["profile_status"] = get_profile_status(state["profile"])
+    return state
+
+
+def save_policy_answer(state, policy_id, question_id, answer):
+    """정책별 추가 질문 답변 저장"""
+    if policy_id not in state["policy_answers"]:
+        state["policy_answers"][policy_id] = {}
+    state["policy_answers"][policy_id][question_id] = answer
+    return state

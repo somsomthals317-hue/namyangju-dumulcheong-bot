@@ -1,0 +1,1182 @@
+[
+  {
+    "policy_id": "NYJ-YOUTH-001",
+    "policy_name": "지역주도형 청년일자리사업",
+    "basic_condition": {
+      "age": "만 18세 이상~만 39세 이하",
+      "residency": "경기도(남양주시 포함)",
+      "income": "해당없음",
+      "employment": "미취업",
+      "student": "해당없음",
+      "startup": "미창업",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "2026년에는 신규 모집 없이 기존 참여자 3명만 지원합니다.",
+      "인건비는 청년 개인이 아니라 청년을 채용한 남양주시 소재 사업장에 지원됩니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": [
+      {
+        "question_id": "gyeonggi_resident",
+        "question": "현재 경기도에 거주하고 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "existing_participant",
+        "question": "현재 이 사업의 기존 참여자인가요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      }
+    ]
+  },
+  {
+    "policy_id": "NYJ-YOUTH-002",
+    "policy_name": "일자리카페",
+    "basic_condition": {
+      "age": "만 19세~만 39세",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "미취업",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "고용24 구직등록확인증이 필요합니다.",
+      "면접정장 대여는 1인 연 3회, 면접사진 촬영은 1인 연 1회이며 예산 소진 시 조기 마감될 수 있습니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": [
+      {
+        "question_id": "job_registration",
+        "question": "고용24에 구직등록을 완료했거나 구직등록확인증을 발급할 수 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      }
+    ]
+  },
+  {
+    "policy_id": "NYJ-YOUTH-003",
+    "policy_name": "취업성공 프로젝트",
+    "basic_condition": {
+      "age": "만 19~만 39세",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "미취업",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "구직등록확인증과 취업준비도조사서를 제출해야 합니다.",
+      "프로그램은 2026년 3월, 5월, 7월, 9월에 기수별로 운영되며 세부 내용은 달라질 수 있습니다.",
+      "수료·취업 수당은 예산 범위 내에서 지급됩니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": [
+      {
+        "question_id": "government_employment_program",
+        "question": "신청일 기준 국민취업지원제도 등 정부지원 취업사업에 참여하고 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "participated_last_three_years",
+        "question": "최근 3년 이내 남양주시 취업성공 프로젝트에 참여한 적이 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      }
+    ]
+  },
+  {
+    "policy_id": "NYJ-YOUTH-004",
+    "policy_name": "경기청년 역량강화 기회지원사업(응시료지원)",
+    "basic_condition": {
+      "age": "만 19 ~ 만 39세",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "미취업",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "2026년 신청기간은 5월 11일부터 12월 4일까지이며 예산 소진 시 조기 마감될 수 있습니다.",
+      "결제 영수증, 응시확인서 또는 성적표, 주민등록초본, 건강보험 자격득실확인서, 본인 명의 통장사본 등이 필요합니다.",
+      "지원금은 1인 최대 30만원의 실제 본인 부담 응시료입니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": [
+      {
+        "question_id": "exam_period",
+        "question": "지원받으려는 시험을 2025년 12월 1일부터 2026년 11월 30일 사이에 실제로 응시했나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "unemployed_on_exam_date",
+        "question": "시험 응시일 당시 미취업 상태였나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "eligible_exam_type",
+        "question": "응시한 시험이 어학시험, 국가기술자격 또는 국가공인 민간자격에 해당하나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "same_exam_limit",
+        "question": "동일 시험에 대한 지원 횟수가 3회 이하인가요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      }
+    ]
+  },
+  {
+    "policy_id": "NYJ-YOUTH-005",
+    "policy_name": "면접준비 청년 헤어스타일링 지원",
+    "basic_condition": {
+      "age": "만 19세 이상 만 39세 이하",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "서류 전형 합격 후 면접을 앞둔 청년",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "신청만으로 참여가 확정되는 것은 아니며 합격자에게 개별 연락합니다.",
+      "업체마다 가능한 시술이 다르고 파마·업스타일·긴 머리 시술 등이 제한될 수 있습니다.",
+      "제출한 서류는 반환되지 않습니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": [
+      {
+        "question_id": "interview_upcoming",
+        "question": "서류전형에 합격했고 현재 면접을 앞두고 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "interview_evidence",
+        "question": "합격 공고문이나 면접 안내 문자·이메일 등 면접 증빙자료를 제출할 수 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "annual_usage_limit",
+        "question": "올해 이 서비스를 이용한 횟수가 2회 미만인가요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "photo_consent",
+        "question": "헤어스타일링 결과물 촬영에 동의하나요?",
+        "options": [
+          "예",
+          "아니오"
+        ]
+      }
+    ]
+  },
+  {
+    "policy_id": "NYJ-YOUTH-006",
+    "policy_name": "말산업 청년인턴취업지원",
+    "basic_condition": {
+      "age": "만18세이상∼만39세 이하",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "미취업",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "지원금은 청년 개인이 아니라 신규 인턴을 채용한 말농가·승마장에 지급됩니다.",
+      "2026년 사업량은 4명이며 구체적인 참여 사업장과 신청 절차는 담당 부서 확인이 필요합니다.",
+      "원문은 전국 청년을 대상으로 하지만 Summary의 거주 조건은 남양주시로 되어 있습니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": [
+      {
+        "question_id": "horse_industry_intern",
+        "question": "남양주시 관내 말농가 또는 승마장의 신규 인턴으로 취업하려고 하나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "participating_employer",
+        "question": "해당 사업에 참여하는 말농가 또는 승마장에 신규 채용될 예정인가요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      }
+    ]
+  },
+  {
+    "policy_id": "NYJ-YOUTH-007",
+    "policy_name": "청년 행정체험 연수(구 대학생 시정업무체험)",
+    "basic_condition": {
+      "age": "만 19세~만 39세 (단, 1986. 6. 11. ~ 2007. 6. 10.일생까지)",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "2026년 하계 신청기간은 6월 15일부터 6월 22일까지로 종료됐습니다.",
+      "선발은 전산 무작위 추첨이며 우선선발 신청자는 본인 명의 증빙서류를 제출해야 합니다.",
+      "선발 후 거주지 등 자격요건이 맞지 않으면 선발에서 제외될 수 있습니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": [
+      {
+        "question_id": "birth_date_range",
+        "question": "생년월일이 1986년 6월 11일부터 2007년 6월 10일 사이인가요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "participated_last_two_years",
+        "question": "최근 2년 이내 청년 행정체험 연수 또는 대학생 시정업무체험에 참여한 적이 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      }
+    ]
+  },
+  {
+    "policy_id": "NYJ-YOUTH-008",
+    "policy_name": "남양주형 청년 인재 플랫폼(정약용 후예)",
+    "basic_condition": {
+      "age": "만 19세~만 39세",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "신청 후 담당자가 경력증빙자료와 세부 절차를 개별 안내합니다.",
+      "검토된 청년 인재 프로필은 남양주시 청년 공식 블로그에 게시될 수 있습니다.",
+      "원문에 별도 연령 범위가 없어 프로젝트 공통 청년 기준인 만 19세~만 39세를 적용합니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": [
+      {
+        "question_id": "talent_field",
+        "question": "등록하려는 전문 분야나 활동 분야가 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "career_evidence",
+        "question": "해당 분야의 경력이나 활동을 증빙할 자료를 제출할 수 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      }
+    ]
+  },
+  {
+    "policy_id": "NYJ-YOUTH-009",
+    "policy_name": "청년성장 프로젝트(청년꿈틀)",
+    "basic_condition": {
+      "age": "만 15세 ~ 만 39세",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "초기상담을 통해 진로·구직 상태와 필요한 지원을 확인한 뒤 맞춤형 프로그램을 연계합니다.",
+      "프로그램별 운영일정과 참여 가능 여부는 달라질 수 있습니다."
+    ],
+    "unknown_flag": false,
+    "additional_questions": []
+  },
+  {
+    "policy_id": "NYJ-YOUTH-010",
+    "policy_name": "청년기본소득",
+    "basic_condition": {
+      "age": "만 24세",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "분기별 연령기준일과 신청기간이 다릅니다.",
+      "경기도 거주기간은 주민등록초본의 주소이력으로 확인합니다.",
+      "자동신청 미동의자 또는 미선정자는 분기마다 다시 신청해야 합니다.",
+      "지원금은 남양주사랑상품권으로 지급됩니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": [
+      {
+        "question_id": "gyeonggi_three_years",
+        "question": "경기도에 3년 이상 계속 주민등록을 두고 거주했나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "gyeonggi_ten_years",
+        "question": "경기도에서 주민등록을 두고 거주한 기간이 합산 10년 이상인가요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "birth_date",
+        "question": "분기별 지급대상 생년월일을 확인할 수 있도록 정확한 생년월일을 알려주세요.",
+        "options": []
+      }
+    ]
+  },
+  {
+    "policy_id": "NYJ-YOUTH-011",
+    "policy_name": "청년월세 지원사업",
+    "basic_condition": {
+      "age": "만 19세~만 34세",
+      "residency": "남양주시",
+      "income": "청년가구 기준 중위소득 60% 이하, 원가구 기준 중위소득 100% 이하(기준 중위소득 100% 이하 (‘26년 3인가구 기준 536만원/월)",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "무주택",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "2026년 신청기간은 3월 30일부터 5월 29일까지로 종료됐습니다.",
+      "실제 납부한 월세 중 최대 월 20만원을 지원하며 보증금과 관리비는 지원하지 않습니다.",
+      "소득·재산 기준은 복지로 사전 모의계산을 권장합니다.",
+      "신청서, 소득·재산 신고서, 임대차계약서, 월세이체 증빙, 가족관계증명서 등이 필요합니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": [
+      {
+        "question_id": "separate_from_parents",
+        "question": "현재 부모님과 별도로 거주하고 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "youth_household_income",
+        "question": "청년가구 소득이 기준 중위소득 60% 이하로 확인됐나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "original_household_income",
+        "question": "원가구 소득이 기준 중위소득 100% 이하로 확인됐나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "youth_household_assets",
+        "question": "청년가구 재산이 1억 2,200만원 이하로 확인됐나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "original_household_assets",
+        "question": "원가구 재산이 4억 7,000만원 이하로 확인됐나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "relative_owned_rental",
+        "question": "직계존속이나 형제·자매 등 2촌 이내 친족이 소유한 주택을 임차하고 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "public_rental_housing",
+        "question": "공공임대주택에 거주하고 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "sublease_shared_room",
+        "question": "한 방에 여러 명이 거주하는 전대차 방식으로 거주하고 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "previous_24_months_support",
+        "question": "기존 청년월세 한시 특별지원에서 24회를 모두 지원받았나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "other_housing_support",
+        "question": "현재 주거안정장학금이나 다른 중앙정부·지자체 월세지원을 받고 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      }
+    ]
+  },
+  {
+    "policy_id": "NYJ-YOUTH-012",
+    "policy_name": "청년내일저축계좌",
+    "basic_condition": {
+      "age": "만 15세 이상 ~ 만 39세 이하",
+      "residency": "남양주시",
+      "income": "기준 중위소득 50% 이하",
+      "employment": "재직자(월 10만원 이상 근로 및 사업 소득 발생)",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "2026년 신청기간은 5월 4일부터 5월 20일까지로 종료됐습니다.",
+      "요건을 충족해도 예산과 모집인원에 따라 신규 가입이 제한될 수 있습니다.",
+      "가입 후 3년간 근로활동과 저축을 유지하고 교육 10시간 이수 및 자금사용계획서 제출이 필요합니다.",
+      "중도 조건을 충족하지 못하면 정부지원금이 지급되지 않을 수 있습니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": [
+      {
+        "question_id": "income_below_50",
+        "question": "신청 당시 가구의 소득인정액이 기준 중위소득 50% 이하로 확인됐나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "monthly_earned_income",
+        "question": "현재 월 10만원 이상의 근로·사업소득이 발생하고 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "excluded_income_only",
+        "question": "근로소득이 근로장학금, 무급근로, 실업급여 또는 육아휴직수당만으로 구성되어 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "restricted_savings_account",
+        "question": "현재 청년희망키움통장이나 청년저축계좌에 가입 중인가요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "similar_asset_program",
+        "question": "유사 자산형성사업에 참여 중이거나 과거에 해당 지원금을 받은 적이 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      }
+    ]
+  },
+  {
+    "policy_id": "NYJ-YOUTH-013",
+    "policy_name": "청년 주거급여",
+    "basic_condition": {
+      "age": "만19세~만 30세 미만",
+      "residency": "남양주시",
+      "income": "주거급여를 수급 받은 가구 구성원",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "청년 본인 명의 임대차계약 체결, 전입신고 완료 및 실제 임차료 납부",
+      "marriage": "미혼"
+    },
+    "caution_condition": [
+      "지급액은 지역별·가구원수별 기준임대료와 소득수준에 따라 달라집니다.",
+      "정기급여는 매월 20일, 추가급여는 매월 말일 지급됩니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": [
+      {
+        "question_id": "housing_benefit_household",
+        "question": "현재 주거급여를 지급받는 가구의 구성원인가요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "separate_from_parents",
+        "question": "현재 부모님과 다른 주소지에 거주하고 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "own_lease_contract",
+        "question": "본인 명의로 임대차계약을 체결했나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "move_in_report",
+        "question": "현재 거주지에 전입신고를 완료했나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "actual_rent_payment",
+        "question": "현재 실제 임차료를 납부하고 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      }
+    ]
+  },
+  {
+    "policy_id": "NYJ-YOUTH-014",
+    "policy_name": "청년마음건강센터",
+    "basic_condition": {
+      "age": "만15 ∼ 34세",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "초기상담 이후 사례관리, 교육, 집단 프로그램 등 필요한 서비스로 연계됩니다.",
+      "프로그램별 참여 방식과 일정은 달라질 수 있습니다."
+    ],
+    "unknown_flag": false,
+    "additional_questions": []
+  },
+  {
+    "policy_id": "NYJ-YOUTH-015",
+    "policy_name": "청년정신건강증진사업",
+    "basic_condition": {
+      "age": "만15 ∼ 34세",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "원문에는 정신질환자 치료비 지원의 진단·치료기관·비용 기준이 구체적으로 제시되어 있지 않습니다.",
+      "치료비 지원 자격은 남양주시정신건강복지센터에 확인해야 하며 AI가 세부 기준을 추측하면 안 됩니다."
+    ],
+    "unknown_flag": false,
+    "additional_questions": []
+  },
+  {
+    "policy_id": "NYJ-YOUTH-016",
+    "policy_name": "입영지원금 지원",
+    "basic_condition": {
+      "age": "만 19세~만 39세",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "현역병 또는 사회복무요원으로 입영",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "입영지원금은 최초 입영 1회에 한해 10만원의 남양주사랑상품권으로 지급됩니다.",
+      "입영 전에는 입영·소집통지서, 입영 후에는 병적증명서가 필요합니다.",
+      "전역 또는 소집해제 이후에는 신청할 수 없습니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": [
+      {
+        "question_id": "enlistment_notice",
+        "question": "현역병 또는 사회복무요원 입영·소집통지서를 받았나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "one_year_residency",
+        "question": "신청일 기준 남양주시에 1년 이상 계속 주민등록을 두고 거주했나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "excluded_service_type",
+        "question": "장교, 부사관, 예술·체육요원, 공중보건의, 전문연구요원 또는 산업기능요원에 해당하나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "discharged",
+        "question": "이미 전역하거나 소집해제했나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "previous_enlistment_support",
+        "question": "이전에 남양주시 입영지원금을 받은 적이 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      }
+    ]
+  },
+  {
+    "policy_id": "NYJ-YOUTH-017",
+    "policy_name": "청년농업인 영농정착 지원",
+    "basic_condition": {
+      "age": "만 18세 이상 ~ 만 40세 미만(* 1985.1.1.~2008.12.31. 출생자)",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "영농경력 3년 이하 청년 농업인",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "영농계획서, 건강보험 확인서, 가족관계증명서, 병역증명서, 영농 증빙자료 등 다수 서류가 필요합니다.",
+      "독립경영 연차에 따라 지원기간과 지원금액이 달라집니다.",
+      "신청기간은 통상 12월부터 다음 해 2월까지이나 매년 달라질 수 있습니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": [
+      {
+        "question_id": "birth_date_range",
+        "question": "생년월일이 1985년 1월 1일부터 2008년 12월 31일 사이인가요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "independent_farmer",
+        "question": "현재 독립경영 중인 청년농업인인가요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "farming_experience",
+        "question": "독립 영농경력이 3년 이하인가요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      }
+    ]
+  },
+  {
+    "policy_id": "NYJ-YOUTH-018",
+    "policy_name": "농업인자녀 대학생 학자금 이자지원",
+    "basic_condition": {
+      "age": "만 19세~만 39세",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "대학생",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "대학 과정에 따라 융자한도와 상환기간이 다릅니다.",
+      "원문에 별도 연령 범위가 없어 프로젝트 공통 청년 기준인 만 19세~만 39세를 적용합니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": [
+      {
+        "question_id": "farmer_parent",
+        "question": "부모님 중 농업인이 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "korea_student_aid_rejected",
+        "question": "한국장학재단 농어촌출신 대학생 학자금 융자에서 자격 제한을 받거나 심사에서 탈락했나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      }
+    ]
+  },
+  {
+    "policy_id": "NYJ-YOUTH-019",
+    "policy_name": "청춘야학당 교육 프로그램",
+    "basic_condition": {
+      "age": "만 19세 ~ 만 39세",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "교육 주제와 일정은 프로그램별로 다릅니다.",
+      "세부 모집내용은 남양주시 공식 청년 블로그와 인스타그램 공고를 확인해야 합니다."
+    ],
+    "unknown_flag": false,
+    "additional_questions": []
+  },
+  {
+    "policy_id": "NYJ-YOUTH-020",
+    "policy_name": "청년창업 교육프로그램",
+    "basic_condition": {
+      "age": "만 39세 이하",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "창업 중인 사람만 대상으로 제한하는 사업은 아닙니다.",
+      "강좌별 모집인원과 운영일정이 다르며 세부 모집공고를 확인해야 합니다."
+    ],
+    "unknown_flag": false,
+    "additional_questions": []
+  },
+  {
+    "policy_id": "NYJ-YOUTH-021",
+    "policy_name": "청년창업 컨설팅",
+    "basic_condition": {
+      "age": "만 19세~만 39세",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "예비창업자,기창업자",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "원문의 19세~39세와 1986~2007년생 표기가 경계 연령에서 모호할 수 있어 실제 모집공고 확인이 필요합니다.",
+      "온라인 접수 후 신청서와 주민등록초본을 담당자 이메일로 제출해야 합니다."
+    ],
+    "unknown_flag": false,
+    "additional_questions": []
+  },
+  {
+    "policy_id": "NYJ-YOUTH-022",
+    "policy_name": "청년 참여·문화 사업",
+    "basic_condition": {
+      "age": "만 19~ 만39세",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "청년축제, 댄스스쿨, 음악스쿨, 해외연수단의 모집기간과 운영일정이 서로 다릅니다.",
+      "해외연수단은 현재 원문에 구체적인 연령·선발 조건이 없어 세부 공고 확인이 필요합니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": [
+      {
+        "question_id": "selected_subprogram",
+        "question": "어떤 청년 참여·문화 세부 프로그램을 확인하고 싶나요?",
+        "options": [
+          "청년축제",
+          "청년댄스스쿨",
+          "청년음악스쿨",
+          "청년크루 해외연수단"
+        ]
+      }
+    ]
+  },
+  {
+    "policy_id": "NYJ-YOUTH-023",
+    "policy_name": "청년꽃간",
+    "basic_condition": {
+      "age": "만 19세~만 39세",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "청년꽃간 지점마다 운영시간과 이용방법이 다릅니다.",
+      "2호점부터 4호점은 사전 협의 또는 대관 신청이 필요하고 이용 목적에 따라 사용이 제한될 수 있습니다."
+    ],
+    "unknown_flag": false,
+    "additional_questions": []
+  },
+  {
+    "policy_id": "NYJ-YOUTH-024",
+    "policy_name": "대학생 플래너즈",
+    "basic_condition": {
+      "age": "만 19세~만 39세",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "대학생",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "연 1회 정기모집과 수시모집으로 운영됩니다.",
+      "시정참여, 콘텐츠 제작, 봉사, 회의와 역량강화 활동에 참여합니다.",
+      "원문에 별도 연령 범위가 없어 프로젝트 공통 청년 기준인 만 19세~만 39세를 적용합니다."
+    ],
+    "unknown_flag": false,
+    "additional_questions": []
+  },
+  {
+    "policy_id": "NYJ-YOUTH-025",
+    "policy_name": "청년예술인 지원",
+    "basic_condition": {
+      "age": "만 19세 이상 만 39세 이하",
+      "residency": "남양주시",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "지원금은 사례비, 제작비, 재료비, 홍보비, 발간비, 대관료, 임차료 등 창작활동 직접경비에 사용합니다.",
+      "구체적인 증빙자료와 심사·선정 기준은 실제 모집공고 확인이 필요합니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": [
+      {
+        "question_id": "artist_activity",
+        "question": "현재 공연, 문학, 시각, 영상 등 예술 분야에서 활동하고 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "local_project_plan",
+        "question": "남양주 지역을 기반으로 작품을 제작하고 발표할 계획이 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      },
+      {
+        "question_id": "artist_evidence",
+        "question": "예술 활동과 작품 제작·발표 계획을 증빙할 수 있나요?",
+        "options": [
+          "예",
+          "아니오",
+          "잘 모르겠음"
+        ]
+      }
+    ]
+  },
+  {
+    "policy_id": "NYJ-EXPLAIN-001",
+    "policy_name": "청년정책 소개",
+    "eligibility_mode": "INFO_ONLY",
+    "info_only_reason": "남양주시 청년정책 전체를 소개하는 종합 안내 페이지로, 하나의 개별 신청사업이 아닙니다.",
+    "basic_condition": {
+      "age": "해당없음",
+      "residency": "해당없음",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "실제 자격 확인은 소개 페이지에 연결된 각 개별 정책에서 진행해야 합니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": []
+  },
+  {
+    "policy_id": "NYJ-EXPLAIN-002",
+    "policy_name": "남양주시 청년창업센터",
+    "eligibility_mode": "INFO_ONLY",
+    "info_only_reason": "센터 종합 안내 페이지이며, 창업공간 입주는 공실 발생 시 별도 공개모집 심사를 거치고 공유공간은 예약 승인이 필요합니다.",
+    "basic_condition": {
+      "age": "해당없음",
+      "residency": "해당없음",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "입주와 공유공간 대관은 서로 다른 절차입니다.",
+      "입주 자격은 해당 시점의 모집공고를 확인해야 합니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": []
+  },
+  {
+    "policy_id": "NYJ-EXPLAIN-003",
+    "policy_name": "배움공간(4층)",
+    "eligibility_mode": "INFO_ONLY",
+    "info_only_reason": "교육실·공유오피스·비상주 지정 오피스의 시설 안내 페이지로, 대관과 입주 조건은 예약 또는 모집공고별로 다릅니다.",
+    "basic_condition": {
+      "age": "해당없음",
+      "residency": "해당없음",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "공유공간 이용과 창업공간 입주는 동일한 자격 절차가 아닙니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": []
+  },
+  {
+    "policy_id": "NYJ-EXPLAIN-004",
+    "policy_name": "소통공간(3층)",
+    "eligibility_mode": "INFO_ONLY",
+    "info_only_reason": "라운지·공유작업실·촬영·편집실의 시설 안내 페이지로, 실제 이용 가능 여부는 온라인 예약 승인과 이용 목적에 따라 달라집니다.",
+    "basic_condition": {
+      "age": "해당없음",
+      "residency": "해당없음",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "공간별 예약 가능 시간과 이용 제한은 예약 페이지에서 확인해야 합니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": []
+  },
+  {
+    "policy_id": "NYJ-EXPLAIN-005",
+    "policy_name": "창업공간(1층)",
+    "eligibility_mode": "INFO_ONLY",
+    "info_only_reason": "현재 입점 공간과 시설을 소개하는 페이지이며, 신규 입주는 공실 발생 시 별도 공개모집과 심사를 거칩니다.",
+    "basic_condition": {
+      "age": "해당없음",
+      "residency": "해당없음",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "층 안내만으로 입주 자격을 확정할 수 없으며 최신 모집공고 확인이 필요합니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": []
+  },
+  {
+    "policy_id": "NYJ-EXPLAIN-006",
+    "policy_name": "창업공간(2층)",
+    "eligibility_mode": "INFO_ONLY",
+    "info_only_reason": "현재 2층 입점 공간을 소개하는 페이지이며, 신규 입주는 공실 발생 시 별도 공개모집과 심사를 거칩니다.",
+    "basic_condition": {
+      "age": "해당없음",
+      "residency": "해당없음",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "층 안내만으로 입주 자격을 확정할 수 없으며 최신 모집공고 확인이 필요합니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": []
+  },
+  {
+    "policy_id": "NYJ-EXPLAIN-007",
+    "policy_name": "키움식당(5층)",
+    "eligibility_mode": "INFO_ONLY",
+    "info_only_reason": "현재 외식 창업 입점 공간을 소개하는 페이지이며, 신규 입주는 공실 발생 시 별도 공개모집과 심사를 거칩니다.",
+    "basic_condition": {
+      "age": "해당없음",
+      "residency": "해당없음",
+      "income": "해당없음",
+      "employment": "해당없음",
+      "student": "해당없음",
+      "startup": "해당없음",
+      "housing": "해당없음",
+      "marriage": "해당없음"
+    },
+    "caution_condition": [
+      "외식 창업 입주 조건과 심사 기준은 최신 모집공고에서 확인해야 합니다."
+    ],
+    "unknown_flag": true,
+    "additional_questions": []
+  }
+]
