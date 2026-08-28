@@ -254,7 +254,10 @@ class FrontendContractTests(unittest.TestCase):
             html = handle.read()
         self.assertIn("function dispatchAction(action, displayText)", html)
         self.assertIn("action: 'SHOW_ALTERNATIVES'", html)
-        self.assertIn("action: 'CHECK_ELIGIBILITY'", html)
+        self.assertIn("action: 'NORMAL'", html)
+        self.assertIn("tasks: ['ELIGIBILITY']", html)
+        self.assertIn("tasks: ['RECOMMEND']", html)
+        self.assertIn("explore_without_profile: true", html)
         self.assertIn("actionPayload ? { action: actionPayload }", html)
 
 
