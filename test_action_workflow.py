@@ -156,8 +156,8 @@ class WorkflowTests(unittest.TestCase):
     def test_explanation_is_held_until_eligibility_finishes(self):
         state = get_default_state()
         state["_intent_workflow"] = [
-            {"task": "EXPLAIN", "policy_mention": "농업 정책", "topic": None},
-            {"task": "ELIGIBILITY", "policy_mention": "농업 정책", "topic": None},
+            {"task": "EXPLAIN", "policy_mention": "청년농업인 영농정착 지원", "topic": None},
+            {"task": "ELIGIBILITY", "policy_mention": "청년농업인 영농정착 지원", "topic": None},
         ]
         agent.start_active_workflow(state, ["EXPLAIN", "ELIGIBILITY"], "복합 요청")
 

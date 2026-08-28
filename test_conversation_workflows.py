@@ -130,6 +130,92 @@ class ConversationWorkflowRegressionTests(unittest.TestCase):
         self.assertIn("먼저 설명할 정책을 정확히 선택해주세요", response)
         self.assertIn("그다음 농업 분야 추천까지 이어갈게요", response)
 
+    def test_broad_explain_selection_then_profile_card_returns_one_combined_answer(self):
+        state = get_default_state()
+
+        with patch.object(
+            agent,
+            "call_openai",
+            return_value=json.dumps(incomplete_recommend_intent("복지"), ensure_ascii=False),
+        ):
+            state, first = agent.handle_turn(
+                state,
+                "농업 정책에 대해서 설명해주고, 복지 분야에서 정책 하나 추천해줘",
+                None,
+                BUNDLES,
+            )
+
+        self.assertEqual(state["active_clarify"], "CLARIFY_POLICY")
+        self.assertEqual(state["pending_tasks"], ["EXPLAIN", "RECOMMEND"])
+        self.assertTrue(state.get("_policy_candidates"))
+        self.assertIn("어떤 정책을 알고 싶으신가요", first)
+        self.assertIn("그다음 복지 분야 추천까지 이어갈게요", first)
+        selected_name = state["_policy_candidates"][0]["policy_name"]
+
+        with patch.object(agent, "run_explain", return_value="선택한 농업 정책 설명"):
+            state, second = agent.handle_turn(state, selected_name, None, BUNDLES)
+
+        self.assertEqual(state["active_clarify"], "CLARIFY_PROFILE")
+        self.assertEqual(state["pending_tasks"], ["RECOMMEND"])
+        self.assertEqual(state["active_workflow"]["results"]["EXPLAIN"], "선택한 농업 정책 설명")
+        self.assertIn("정책 설명은 준비해두었어요", second)
+        self.assertIn("맞춤 추천을 위해 몇 가지 여쭤볼게요", second)
+
+        state["profile"].update(complete_state()["profile"])
+        state["profile_status"] = "COMPLETE"
+        with patch.object(agent, "run_recommend", return_value="복지 추천 카드"):
+            state, final = agent.handle_turn(
+                state,
+                "프로필 입력 완료",
+                None,
+                BUNDLES,
+                ui_event="SUBMIT_RECOMMEND_PROFILE",
+            )
+
+        self.assertIsNone(state["active_workflow"])
+        self.assertIn("[정책 설명]", final)
+        self.assertIn("선택한 농업 정책 설명", final)
+        self.assertIn("[맞춤 추천 결과]", final)
+        self.assertIn("복지 추천 카드", final)
+
+    def test_other_field_after_recommendation_excludes_previous_topic_and_shows_cards(self):
+        state = complete_state()
+        state["last_recommendation_topic"] = "교육"
+        state["last_recommendation_policy_ids"] = ["NYJ-YOUTH-018", "NYJ-YOUTH-019"]
+        state["current_policy_id"] = "NYJ-YOUTH-018"
+        state["focus_policy_id"] = "NYJ-YOUTH-018"
+        seen = []
+
+        def fake_recommend(current_state, bundles):
+            seen.append({
+                "topic": current_state.get("interest_query"),
+                "excluded_topics": list(current_state.get("_exclude_topics") or []),
+                "skip": current_state.get("_skip_profile_check"),
+            })
+            current_state["last_result_policy_ids"] = ["NYJ-YOUTH-016"]
+            return "교육을 제외한 다른 분야 정책 카드"
+
+        action = agent.detect_navigation_action(
+            state, "이거 말고 다른 분야로 부탁할게", BUNDLES
+        )
+        self.assertEqual(action["action"], "SHOW_ALTERNATIVES")
+        self.assertEqual(action["tasks"], ["RECOMMEND"])
+        self.assertEqual(action["exclude_topics"], ["교육"])
+
+        with patch.object(agent, "run_recommend", side_effect=fake_recommend):
+            state, response = agent.handle_turn(
+                state,
+                "이거 말고 다른 분야로 부탁할게",
+                None,
+                BUNDLES,
+            )
+
+        self.assertEqual(
+            seen,
+            [{"topic": "전체", "excluded_topics": ["교육"], "skip": True}],
+        )
+        self.assertIn("다른 분야 정책 카드", response)
+
     def test_atomic_target_extraction_covers_mixed_task_orders(self):
         cases = [
             (
@@ -175,6 +261,34 @@ class ConversationWorkflowRegressionTests(unittest.TestCase):
         _, clarifies, _ = agent.apply_action_transition(state, action, BUNDLES)
         self.assertEqual(clarifies, [])
         self.assertEqual(state["interest_query"], "농업")
+
+    def test_natural_conditionless_recommendation_keeps_explore_mode(self):
+        state = get_default_state()
+        seen = []
+
+        def fake_recommend(current_state, bundles):
+            seen.append({
+                "skip": current_state.get("_skip_profile_check"),
+                "explore": current_state.get("_explore_mode"),
+                "topic": current_state.get("interest_query"),
+            })
+            current_state["last_result_policy_ids"] = ["NYJ-YOUTH-017"]
+            return "농업 정책 카드"
+
+        with patch.object(agent, "run_recommend", side_effect=fake_recommend):
+            next_state, response = agent.handle_turn(
+                state,
+                "농업 정책 조건 없이 추천해줘",
+                None,
+                BUNDLES,
+            )
+
+        self.assertEqual(
+            seen,
+            [{"skip": True, "explore": True, "topic": "농업"}],
+        )
+        self.assertIn("농업 정책 카드", response)
+        self.assertEqual(next_state["last_result_policy_ids"], ["NYJ-YOUTH-017"])
 
     def test_multi_response_follows_user_task_order(self):
         steps = [
