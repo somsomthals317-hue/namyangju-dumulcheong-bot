@@ -327,6 +327,146 @@ class ConversationWorkflowRegressionTests(unittest.TestCase):
         self.assertIn("농업 정책 카드", response)
         self.assertEqual(next_state["last_result_policy_ids"], ["NYJ-YOUTH-017"])
 
+    def test_natural_profile_sentence_captures_age_and_residency_together(self):
+        state = get_default_state()
+        state, first = agent.handle_turn(
+            state, "청년기본소득 자격 확인해줘", None, BUNDLES
+        )
+        self.assertEqual(state["active_clarify"], "CLARIFY_PROFILE")
+        self.assertIn("자격 확인을 위해", first)
+
+        state, second = agent.handle_turn(
+            state, "만 24세고 남양주시에 거주하고 있어", None, BUNDLES
+        )
+
+        self.assertEqual(state["profile"]["age"], 24)
+        self.assertEqual(state["profile"]["residency"], "예")
+        self.assertEqual(state["active_clarify"], "CLARIFY_ADDITIONAL")
+        self.assertNotIn("남양주시 거주", second)
+
+    def test_natural_multi_answer_consumes_all_basic_income_questions(self):
+        state = get_default_state()
+        state, _ = agent.handle_turn(
+            state, "청년기본소득 자격 확인해줘", None, BUNDLES
+        )
+        state, _ = agent.handle_turn(
+            state, "만 24세고 남양주시에 거주하고 있어", None, BUNDLES
+        )
+
+        with patch.object(agent, "review_eligibility_with_ai", return_value=None):
+            state, response = agent.handle_turn(
+                state,
+                "경기도에 계속 3년 넘게 살았고, 합산은 10년이 안 돼. "
+                "생년월일은 2002-05-01이야",
+                None,
+                BUNDLES,
+            )
+
+        answers = state["policy_answers"]["NYJ-YOUTH-010"]
+        self.assertEqual(answers["gyeonggi_three_years"], "예")
+        self.assertEqual(answers["gyeonggi_ten_years"], "아니오")
+        self.assertEqual(answers["birth_date"], "2002-05-01")
+        self.assertIsNone(state["active_clarify"])
+        self.assertIn("거주기간 요건(3년 계속 또는 합산 10년)을 충족", response)
+
+    def test_eligibility_particle_suffix_overrides_explain_misclassification(self):
+        state = complete_state()
+        wrong_model_payload = {
+            "action": "SEARCH_POLICY",
+            "turn_kind": "NEW_TASK",
+            "reuse_focus": False,
+            "use_previous_context": False,
+            "confidence": "high",
+            "tasks": ["EXPLAIN"],
+            "topic": None,
+            "policy_mention": "청년기본소득",
+            "workflow": [{
+                "action": "SEARCH_POLICY",
+                "task": "EXPLAIN",
+                "policy_mention": "청년기본소득",
+                "topic": None,
+            }],
+            "profile_patch": {},
+            "clarify_reasons": [],
+        }
+        with patch.object(
+            agent,
+            "call_openai",
+            return_value=json.dumps(wrong_model_payload, ensure_ascii=False),
+        ):
+            state, response = agent.handle_turn(
+                state,
+                "추천한 청년기본소득 자격도 확인해줘",
+                None,
+                BUNDLES,
+            )
+
+        self.assertEqual(state["selected_policy_id"], "NYJ-YOUTH-010")
+        self.assertEqual(state["active_clarify"], "CLARIFY_ADDITIONAL")
+        self.assertIn("추가 자격 조건 확인", response)
+        self.assertNotIn("[정책 설명]", response)
+
+    def test_intra_query_pronoun_reuses_explain_policy_for_eligibility(self):
+        state = get_default_state()
+        model_payload = {
+            "action": "RUN_WORKFLOW",
+            "turn_kind": "NEW_TASK",
+            "reuse_focus": False,
+            "use_previous_context": False,
+            "confidence": "high",
+            "tasks": ["EXPLAIN", "ELIGIBILITY"],
+            "topic": None,
+            "policy_mention": "입영지원금",
+            "workflow": [],
+            "profile_patch": {},
+            "clarify_reasons": [],
+        }
+        with patch.object(
+            agent,
+            "call_openai",
+            return_value=json.dumps(model_payload, ensure_ascii=False),
+        ), patch.object(agent, "run_explain", return_value="입영지원금 설명"):
+            state, response = agent.handle_turn(
+                state,
+                "입영지원금 정책 설명해주고 내가 자격되는지도 확인해줘",
+                None,
+                BUNDLES,
+            )
+
+        workflow = state["active_workflow"]
+        self.assertEqual(
+            [step["policy_id"] for step in workflow["steps"]],
+            ["NYJ-YOUTH-016", "NYJ-YOUTH-016"],
+        )
+        self.assertEqual(workflow["index"], 1)
+        self.assertEqual(state["active_clarify"], "CLARIFY_PROFILE")
+        self.assertNotIn("어떤 정책의 자격", response)
+        self.assertIn("입영지원금 지원 자격 확인", response)
+
+    def test_three_task_pause_narrates_explain_recommend_and_eligibility(self):
+        state = get_default_state()
+        with patch.object(
+            agent,
+            "call_openai",
+            return_value=json.dumps(incomplete_recommend_intent("복지"), ensure_ascii=False),
+        ), patch.object(agent, "run_explain", return_value="입영지원금 설명"), patch.object(
+            agent, "run_recommend", return_value="복지 추천 카드"
+        ):
+            state, response = agent.handle_turn(
+                state,
+                "입영지원금 지원 설명해주고, 복지 정책을 조건 없이 추천해주고, "
+                "청년월세 지원사업 자격도 확인해줘",
+                None,
+                BUNDLES,
+            )
+
+        self.assertEqual(
+            [step["task"] for step in state["active_workflow"]["steps"]],
+            ["EXPLAIN", "RECOMMEND", "ELIGIBILITY"],
+        )
+        self.assertIn("정책 설명과 맞춤 추천은 준비해두었어요", response)
+        self.assertIn("자격 확인에 필요한 정보", response)
+
     def test_multi_response_follows_user_task_order(self):
         steps = [
             {"task": "RECOMMEND", "topic": "농업"},
