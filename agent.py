@@ -131,6 +131,15 @@ def _clean_action_topics(value):
     return [item.strip() for item in normalized.split(",") if item.strip()]
 
 
+def _linked_recommendation_topic(state):
+    """현재 설명 정책이 마지막 추천 카드에서 선택된 경우에만 추천 분야를 복원한다."""
+    policy_id = state.get("current_policy_id") or state.get("focus_policy_id")
+    ids = state.get("last_recommendation_policy_ids") or []
+    if policy_id and policy_id in ids:
+        return state.get("last_recommendation_topic")
+    return None
+
+
 def validate_action_payload(payload):
     """GPT와 UI Action을 같은 보수적 Schema로 검증한다."""
     if not isinstance(payload, dict):
@@ -209,7 +218,11 @@ def detect_navigation_action(state, message, bundles):
         })
 
     current_policy_id = state.get("current_policy_id") or state.get("focus_policy_id")
-    current_topic = state.get("current_topic") or state.get("interest_query")
+    current_topic = (
+        state.get("current_topic")
+        or state.get("interest_query")
+        or _linked_recommendation_topic(state)
+    )
     mentioned_topics = _clean_action_topics(normalize_interests(msg))
 
     # 특정 공식 정책명은 일반 분야 검색보다 우선한다.
@@ -357,10 +370,20 @@ def detect_navigation_action(state, message, bundles):
     if alternative_cue:
         exclude_topics = before_topics[:]
         exclude_policy_ids = []
-        if re.search(r"(?:이거|그거|이것|그것)\s*말고", msg):
+        if re.search(r"다른\s*분야|분야를?\s*(?:바꿔|바꾸|달리)", msg):
+            # 추천 카드에서 정책 설명으로 들어가면 current_topic은 새 EXPLAIN
+            # 전환 과정에서 비워질 수 있다. 마지막 추천 분야를 기준으로
+            # 분야 전체를 제외해야 같은 교육/농업 목록이 반복되지 않는다.
+            if current_topic:
+                exclude_topics = _clean_action_topics(current_topic)
+        elif re.search(r"(?:이거|그거|이것|그것)\s*말고", msg):
             # 직전 답변이 추천 목록이면 "이거/그거"는 화면에 보인 결과 묶음을
             # 가리킬 수 있다. 한 정책만 제외해 같은 목록이 반복되지 않게 한다.
-            exclude_policy_ids.extend(state.get("last_result_policy_ids") or [])
+            stored_ids = state.get("last_recommendation_policy_ids") or []
+            linked_ids = stored_ids if current_policy_id in stored_ids else []
+            exclude_policy_ids.extend(
+                state.get("last_result_policy_ids") or linked_ids
+            )
             if not exclude_policy_ids and current_policy_id:
                 exclude_policy_ids.append(current_policy_id)
         elif not exclude_topics and current_policy_id:
@@ -402,6 +425,10 @@ def _policy_id_for_action(action, bundles):
     if alias_id and any(bundle["policy_id"] == alias_id for bundle in bundles):
         return alias_id
     if mention:
+        # "농업 정책", "교육 분야 정책"은 정책명이 아니라 분야다.
+        # 토큰 부분 일치로 우연히 한 정책을 고정하지 않고 카드 선택으로 보낸다.
+        if _broad_policy_topic(mention, bundles):
+            return None
         status, candidates = match_policy_candidates(bundles, mention)
         if status == "UNIQUE":
             return candidates[0]["policy_id"]
@@ -531,7 +558,11 @@ def apply_action_transition(state, action, bundles, preserve_workflow=False):
         return tasks, clarifies, None
 
     if kind == "SHOW_ALTERNATIVES":
-        previous_topic = state.get("current_topic") or state.get("interest_query")
+        previous_topic = (
+            state.get("current_topic")
+            or state.get("interest_query")
+            or _linked_recommendation_topic(state)
+        )
         previous_policy = state.get("current_policy_id") or state.get("focus_policy_id")
         new_policy_id = _policy_id_for_action(action, bundles)
         exclude_topics = list(action.get("exclude_topics") or [])
@@ -894,14 +925,15 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None, input_a
             state["_rewritten_query"] = state["_policy_mention"]
             tasks = ["EXPLAIN"]
         elif _is_broad_interest_policy_request(msg, bundles):
-            # "창업 정책 알려줘"처럼 분야 전체를 묻는 요청은 임의의 정책
-            # 하나를 설명하지 않고, 개인 판정 없는 분야별 탐색 목록을 보여준다.
-            state["interest_query"] = normalize_interests(msg)
-            state["_skip_profile_check"] = True
-            state["_explore_mode"] = True
-            state["_policy_mention"] = None
-            state["_rewritten_query"] = None
-            tasks = ["RECOMMEND"]
+            # "농업 정책 설명해줘"처럼 분야 전체를 설명 대상으로 삼으면
+            # 임의 정책 하나를 고르지 않는다. 관련 정책 선택 카드를 먼저
+            # 보여준 뒤 사용자의 선택으로 EXPLAIN을 재개한다.
+            topic = normalize_interests(msg)
+            state["interest_query"] = topic
+            state["_policy_mention"] = f"{topic} 정책"
+            state["_rewritten_query"] = state["_policy_mention"]
+            tasks = ["EXPLAIN"]
+            clarify_reasons = ["CLARIFY_POLICY"]
         elif msg.endswith("정책에 대해 알려줘"):
             policy_name = msg.removesuffix("정책에 대해 알려줘").strip()
             state["_policy_mention"] = policy_name
@@ -1267,6 +1299,8 @@ def generate_clarify_question(state, clarify_type):
     """Clarify 질문 생성"""
     if clarify_type == "CLARIFY_POLICY" and "ELIGIBILITY" in state.get("pending_tasks", []):
         return "어떤 정책의 자격을 확인하고 싶으신가요?\n아래에서 선택해주세요."
+    if clarify_type == "CLARIFY_POLICY" and state.get("_policy_candidates"):
+        return "어떤 정책을 알고 싶으신가요?\n아래에서 선택해주세요."
     if clarify_type == "CLARIFY_PROFILE":
         missing = get_missing_profile_fields(state["profile"])
         if missing:
@@ -1459,7 +1493,12 @@ def _normalize_workflow_steps(state, tasks, bundles=None, original_query=""):
             if excluded_id:
                 exclude_policy_ids.append(excluded_id)
         if action["action"] == "SHOW_ALTERNATIVES":
-            if not exclude_policy_ids and workflow_policy_id and workflow_policy_id != resolved_policy_id:
+            if (
+                not exclude_policy_ids
+                and not exclude_topics
+                and workflow_policy_id
+                and workflow_policy_id != resolved_policy_id
+            ):
                 exclude_policy_ids.append(workflow_policy_id)
             elif not exclude_policy_ids and workflow_topic and not exclude_topics:
                 exclude_topics.extend(_clean_action_topics(workflow_topic))
@@ -1486,6 +1525,13 @@ def _normalize_workflow_steps(state, tasks, bundles=None, original_query=""):
     if not steps:
         mention = state.get("_policy_mention")
         topic = state.get("interest_query")
+        explore_without_profile = bool(
+            state.get("_skip_profile_check")
+            or state.get("_explore_mode")
+            or "조건 없이" in (original_query or "")
+            or "프로필 없이" in (original_query or "")
+            or "자격 판정 없이" in (original_query or "")
+        )
         for task in sort_tasks(tasks):
             policy_mention = mention if task in {"EXPLAIN", "ELIGIBILITY"} else None
             action = "NORMAL"
@@ -1505,7 +1551,9 @@ def _normalize_workflow_steps(state, tasks, bundles=None, original_query=""):
                 "exclude_policy_ids": [],
                 "follow_up_field": None,
                 "use_previous_context": False,
-                "explore_without_profile": False,
+                "explore_without_profile": (
+                    explore_without_profile if task == "RECOMMEND" else False
+                ),
                 "transition_applied": False,
                 "pre_clarifies": [],
             })
@@ -1629,6 +1677,21 @@ def execute_active_workflow(state, collection, bundles):
         step = steps[index]
         task = step["task"]
         mention = step.get("policy_mention")
+
+        # 분야형 설명 요청은 가장 비슷한 정책 하나를 임의 선택하지 않는다.
+        # 관련 공식 정책 카드를 먼저 보여주고, 선택 뒤 같은 Workflow를 재개한다.
+        broad_topic = (
+            _broad_policy_topic(mention, bundles)
+            if task == "EXPLAIN" and not step.get("policy_id")
+            else None
+        )
+        if broad_topic:
+            candidates = _policy_candidates_for_interests(bundles, broad_topic)
+            state["_policy_candidates"] = candidates or None
+            state["active_clarify"] = "CLARIFY_POLICY"
+            state["pending_tasks"] = [item["task"] for item in steps[index:]]
+            question = generate_clarify_question(state, "CLARIFY_POLICY")
+            return _workflow_pause_response(workflow, task, question)
 
         # 추천 뒤 자격 대상이 명시되지 않았으면 첫 후보를 임의 선택하지 않는다.
         if (
@@ -2168,6 +2231,8 @@ def run_recommend(state, bundles):
     state["last_result_policy_ids"] = [
         item["policy_id"] for item in relevant_results[:8]
     ]
+    state["last_recommendation_topic"] = interest
+    state["last_recommendation_policy_ids"] = list(state["last_result_policy_ids"])
     if len(relevant_results) == 1:
         state["current_policy_id"] = relevant_results[0]["policy_id"]
     else:
@@ -3415,8 +3480,8 @@ def _is_multi_interest_eligibility_request(message):
     return has_eligibility and len(interests) >= 2
 
 
-def _eligibility_candidates_for_interests(bundles, interest):
-    """복수 분야 자격 요청에 표시할 공식 자격 정책 후보만 만든다."""
+def _policy_candidates_for_interests(bundles, interest):
+    """분야형 설명·자격 Clarify에 표시할 공식 정책 후보를 만든다."""
     interests = [item.strip() for item in (interest or "").split(",") if item.strip()]
     candidates = []
     for bundle in bundles:
@@ -3432,6 +3497,11 @@ def _eligibility_candidates_for_interests(bundles, interest):
         {"policy_id": item["policy_id"], "policy_name": item["policy_name"]}
         for item in candidates[:8]
     ]
+
+
+def _eligibility_candidates_for_interests(bundles, interest):
+    """기존 자격 선택 호출부와의 하위 호환 별칭."""
+    return _policy_candidates_for_interests(bundles, interest)
 
 
 def _contains_exact_policy_name(bundles, message):
@@ -3475,8 +3545,26 @@ def _is_broad_interest_policy_request(message, bundles):
     if re.search(r"자격\s*(?:확인|봐)|가능한지|신청\s*(?:할\s*)?수", message):
         return False
     interests = [item.strip() for item in normalize_interests(message).split(",") if item.strip()]
-    has_list_wording = "정책" in message and bool(re.search(r"알려|보여|찾아|살펴", message))
+    has_list_wording = "정책" in message and bool(re.search(r"설명|알려|보여|찾아|살펴", message))
     return bool(interests) and has_list_wording
+
+
+def _broad_policy_topic(message, bundles):
+    """정확한 정책명이 아닌 단일 관심 분야 설명 대상을 반환한다."""
+    if not message:
+        return None
+    if resolve_policy_alias(message) or _contains_exact_policy_name(bundles, message):
+        return None
+    interests = [
+        item.strip()
+        for item in normalize_interests(message).split(",")
+        if item.strip() and item.strip() != "전체"
+    ]
+    if len(interests) != 1:
+        return None
+    if not re.search(r"정책|분야|관련|쪽|지원(?:사업)?", message):
+        return None
+    return interests[0]
 
 
 def _extract_policy_mention(message):
