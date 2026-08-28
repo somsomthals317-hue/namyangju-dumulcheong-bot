@@ -230,6 +230,29 @@ class ConversationWorkflowRegressionTests(unittest.TestCase):
         )
         self.assertIn("다른 분야 정책 카드", response)
 
+        # GPT가 일반어인 "전체"를 의미상 관련 후보 없음으로 반환해도
+        # 검증된 비-FAIL 후보에서 교육 분야를 제외한 카드가 복구되어야 한다.
+        fallback_state = complete_state()
+        fallback_state["last_recommendation_topic"] = "교육"
+        fallback_state["last_recommendation_policy_ids"] = [
+            "NYJ-YOUTH-018", "NYJ-YOUTH-019"
+        ]
+        fallback_state["current_policy_id"] = "NYJ-YOUTH-018"
+        fallback_state["focus_policy_id"] = "NYJ-YOUTH-018"
+        with patch.object(agent, "rerank_recommendations_with_ai", return_value=[]):
+            fallback_state, fallback_response = agent.handle_turn(
+                fallback_state,
+                "이거 말고 다른 분야로 부탁할게",
+                None,
+                BUNDLES,
+            )
+        self.assertNotIn("찾지 못했어요", fallback_response)
+        self.assertTrue(fallback_state["last_result_policy_ids"])
+        by_id = {item["policy_id"]: item for item in BUNDLES}
+        for policy_id in fallback_state["last_result_policy_ids"]:
+            _, matched = agent._interest_match(by_id[policy_id], ["교육"])
+            self.assertNotIn("교육", matched)
+
     def test_atomic_target_extraction_covers_mixed_task_orders(self):
         cases = [
             (
