@@ -61,6 +61,15 @@ def incomplete_recommend_intent(topic="복지"):
 
 
 class ConversationWorkflowRegressionTests(unittest.TestCase):
+    def test_profile_and_conditionless_buttons_resume_active_workflow(self):
+        with open("static/index.html", "r", encoding="utf-8") as file:
+            html = file.read()
+
+        explore_block = html[html.index("async function exploreWithoutProfile"):html.index("function onInterestSelected")]
+        recommend_block = html[html.index("async function postProfileAndRecommend"):html.index("function showInterestCardsInChat")]
+        self.assertIn("ui_event: 'SUBMIT_RECOMMEND_PROFILE'", explore_block)
+        self.assertIn("ui_event: 'SUBMIT_RECOMMEND_PROFILE'", recommend_block)
+
     def test_model_task_omission_is_recovered_for_user_example(self):
         state = complete_state()
         seen = []

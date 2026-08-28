@@ -771,6 +771,7 @@ async function exploreWithoutProfile(btn) {
             body: JSON.stringify({
                 session_id: SESSION_ID,
                 message: `조건 없이 ${pendingInterest} 추천해줘`,
+                ui_event: 'SUBMIT_RECOMMEND_PROFILE',
                 interest: pendingInterest,
                 action: {
                     action: 'NORMAL',
@@ -1190,6 +1191,7 @@ async function postProfileAndRecommend(profile, skip) {
         const payload = {
             session_id: SESSION_ID,
             message: message,
+            ui_event: 'SUBMIT_RECOMMEND_PROFILE',
             interest: activeInterest,
             action: {
                 action: 'NORMAL',
