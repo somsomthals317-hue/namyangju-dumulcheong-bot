@@ -1757,11 +1757,18 @@ def execute_active_workflow(state, collection, bundles):
             # 복합문장의 전체 원문에는 다른 step의 정책명/분야가 함께 있다.
             # 예: "농업 설명 + 복지 추천"을 그대로 의미 정렬에 쓰면 농업
             # 정책이 복지 후보로 역류할 수 있으므로 RECOMMEND 자기 topic만 쓴다.
-            state["_recommend_query"] = (
-                step.get("topic")
-                if len(steps) > 1 and step.get("topic")
-                else workflow.get("original_query", "")
-            )
+            # 대안 요청도 "이거 말고"라는 지시문보다 전환 후 관심 분야를
+            # 전달해야 GPT가 실제 정책 후보를 의미적으로 평가할 수 있다.
+            if step.get("action") == "SHOW_ALTERNATIVES":
+                state["_recommend_query"] = (
+                    step.get("topic") or state.get("interest_query") or "전체"
+                )
+            else:
+                state["_recommend_query"] = (
+                    step.get("topic")
+                    if len(steps) > 1 and step.get("topic")
+                    else workflow.get("original_query", "")
+                )
             result = run_recommend(state, bundles)
         else:
             result = run_eligibility(state, bundles)
@@ -2234,6 +2241,14 @@ def run_recommend(state, bundles):
         return bool(set(matched) & excluded_topics)
 
     relevant_results = [item for item in relevant_results if not is_excluded(item)]
+    # "다른 분야"는 구체적인 새 분야명이 없는 전체 탐색 요청이다. GPT가
+    # 일반어인 '전체'를 관련 정책 없음으로 판정하더라도 빈 결과로 끝내지 않고,
+    # 코드가 검증한 비-FAIL 후보에서 제외 분야/정책을 뺀 카드를 복구한다.
+    if interest == "전체" and not relevant_results and (excluded_topics or excluded_ids):
+        relevant_results = [
+            item for item in fallback_candidates if not is_excluded(item)
+        ]
+        state["_last_recommendation_mode"] = "RULE_ALTERNATIVE_FALLBACK"
     state["current_topic"] = interest
     state["last_result_policy_ids"] = [
         item["policy_id"] for item in relevant_results[:8]
