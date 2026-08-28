@@ -28,6 +28,9 @@ def get_default_state():
         "last_result_policy_ids": [],
         "active_workflow": None,
         "last_action": None,
+        "last_task": None,
+        "last_tasks": [],
+        "last_intent_failure": None,
         # 자격확인 중인 정책
         "selected_policy_id": None,
         # 대화 메시지 기록
