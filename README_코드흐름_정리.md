@@ -40,11 +40,13 @@
         ↓
 POST /api/chat
         ↓
-Action / Intent 정규화
+의미 단위별 Action + Task 정규화
+        ↓
+각 단위가 참조할 policy/topic 선고정
+        ↓
+단일 또는 복합 Workflow 생성
         ↓
 Action에 따른 State Transition
-        ↓
-단일 작업 또는 복합 Workflow 생성
         ↓
 EXPLAIN / RECOMMEND / ELIGIBILITY 실행
         ↓
@@ -55,30 +57,83 @@ EXPLAIN / RECOMMEND / ELIGIBILITY 실행
 공식 링크를 포함한 최종 답변 반환
 ```
 
-핵심은 사용자의 문장을 바로 RAG 검색에 넣지 않는 것입니다. 먼저 “새 검색인지, 직전 정책의 후속 질문인지, 다른 정책을 원하는지, 자격을 확인하려는지”를 Action으로 정리합니다. 이 단계 때문에 과거 대화의 농업 정책이 새로운 취업 질문에 섞이는 문제를 줄일 수 있습니다.
+핵심은 사용자의 문장을 바로 RAG 검색에 넣지 않는 것입니다. Action은 이전 대화와의 관계만, Task는 실제 수행 기능만 표현합니다. 멀티쿼리에서는 모든 단위의 대상을 먼저 고정한 뒤 State를 바꾸므로, 첫 번째 step의 상태 변경이 뒤 step의 정책 대상을 지우지 않습니다.
+
+### GPT가 개입하는 위치
+
+GPT는 자유롭게 정책을 고르는 단일 엔진이 아니라, 코드가 정한 범위 안에서
+의미를 보조하는 세 지점에만 개입합니다.
+
+| 위치 | GPT 역할 | 코드 안전장치 |
+|---|---|---|
+| Prompt A | 규칙만으로 애매한 자연어의 Action·Task·대상·Workflow를 JSON으로 구조화 | 버튼과 명확한 정책명·후속 표현은 GPT를 건너뜀. 복합 발화는 문장에 실제 존재하는 Task 동사와 다시 교차검증하고, 허용 Schema 재검증 실패 시 `CLARIFY` |
+| Prompt C | 코드가 만든 추천 후보들의 의미 적합성 판정과 순위화 | 공식 후보 ID만 허용, 명확한 자격 FAIL 사전 제외, 불완전 JSON은 규칙 순위로 복구 |
+| Prompt D | 코드 규칙 결과와 실제 입력을 바탕으로 자격 보조 검토 | 코드 FAIL은 GPT 미호출, PASS/UNKNOWN 충돌은 보수적으로 UNKNOWN |
+
+EXPLAIN 본문과 멀티쿼리 최종 결합은 GPT 자유 생성에 맡기지 않습니다.
+공식 원문·Summary를 정해진 형식으로 출력하고, 여러 결과도 코드가 Task별
+제목 아래 결합합니다. 따라서 GPT 장애가 설명 내용이나 이미 계산된 결과를
+다른 정책으로 바꾸지 않습니다.
 
 ---
 
-## 3. 자연어와 버튼을 통일하는 Action
+## 3. Action과 Task의 분리
+
+```text
+Action = 현재 발화와 이전 대화의 관계
+Task   = 사용자가 현재 원하는 실제 결과
+Atomic Intent Unit = Action 1개 + Task 1개 + 대상
+```
+
+Action과 Task는 1:1 관계가 아닙니다. `FOLLOW_UP`과 `SHOW_ALTERNATIVES`에는 세 Task가 모두 올 수 있고, `CHANGE_TOPIC`만 추천 관심 분야 변경 전용이라 `RECOMMEND`와 연결됩니다.
 
 ### Action Schema
 
 | Action | 의미 | 대표 문장 |
 |---|---|---|
-| `SEARCH_POLICY` | 새 정책 검색 | “청년월세 정책 알려줘” |
-| `FOLLOW_UP` | 직전 단일 정책의 세부 항목 질문 | “그 정책 신청 기간은?” |
-| `CHECK_ELIGIBILITY` | 특정 정책의 자격 확인 | “말산업 인턴 나도 가능해?” |
-| `SHOW_ALTERNATIVES` | 직전 정책·분야가 아닌 대안 요청 | “그거 말고 다른 거” |
-| `CHANGE_TOPIC` | 새로운 분야로 명시적 전환 | “농업 말고 취업 정책은?” |
+| `NORMAL` | 이전 정책·결과를 특별히 참조하지 않는 독립 요청 | “청년월세 알려줘” |
+| `FOLLOW_UP` | 직전 정책 또는 추천 결과를 명시적으로 이어서 참조 | “나도 돼?”, “이거랑 비슷한 정책 추천해줘” |
+| `SHOW_ALTERNATIVES` | 직전 대상을 거부·제외하고 다른 대상을 요청 | “그거 말고 다른 거”, “그거 말고 청년기본소득 설명해줘” |
+| `CHANGE_TOPIC` | 추천 관심 분야를 새 분야로 교체 | “농업 말고 취업 정책” |
 | `RESET` | 대화 작업 상태 초기화 | “처음부터 다시 할래” |
+| `CLARIFY` | Action·Task·요청 의미를 신뢰성 있게 해석하지 못함 | 의미 없는 문장, 충돌 Schema, 파싱 실패 |
+
+`RUN_WORKFLOW`는 `NORMAL`, `FOLLOW_UP` 같은 **원자 Action이 아닙니다**. 두 개
+이상의 Task가 감지됐다는 실행 오케스트레이션 이름이며, 실제 저장 시에는
+`active_workflow.steps` 안에 `Action 1개 + Task 1개 + 대상` 형태로 나뉩니다.
+예를 들어 설명+추천은 `RUN_WORKFLOW` 한 단계로 뭉개지 않고
+`NORMAL+EXPLAIN`, `NORMAL+RECOMMEND` 두 step으로 실행됩니다. 과거 화면에서
+보낸 `RUN_WORKFLOW` payload는 하위 호환 alias로만 받습니다.
+
+### Task Schema
+
+| Task | 판단 기준 | 대표 문장 |
+|---|---|---|
+| `EXPLAIN` | 특정 정책의 내용·대상·혜택·기간·방법·서류 설명 | “설명해줘”, “신청 기간은?” |
+| `RECOMMEND` | 정책 후보·선택지·맞춤 추천 제공 | “추천해줘”, “다른 정책 없어?” |
+| `ELIGIBILITY` | 특정 정책의 실제 신청 가능 여부 확인 | “나도 돼?”, “자격 확인해줘” |
+
+대표 조합:
+
+| Action | 가능한 Task | 실제 처리 |
+|---|---|---|
+| `NORMAL` | 세 Task 모두 | 새 정책 설명, 새 추천, 새 정책 자격 확인 |
+| `FOLLOW_UP` | 세 Task 모두 | 직전 정책 상세 설명, 같은 정책 자격 확인, 비슷한 정책 추천 |
+| `SHOW_ALTERNATIVES` | 세 Task 모두 | 다른 정책 카드, 새로 지정한 정책 설명·자격 |
+| `CHANGE_TOPIC` | `RECOMMEND`만 | 기존 분야 제거 후 새 분야 정책 카드 |
+| `RESET` | 없음 | 작업 상태 초기화 |
+| `CLARIFY` | 없음 | 정책 실행 중단 후 기능 선택 안내 |
 
 ### 자연어 처리 원리
 
 1. 코드가 확실하게 판단할 수 있는 전환·후속 표현을 먼저 확인합니다.
 2. 확실하지 않거나 여러 작업·대상이 섞인 문장은 Prompt A가 JSON으로 분석합니다.
-3. JSON의 Action, task, 관심 분야, 정책명, Workflow step을 허용값 기준으로 다시 검증합니다.
-4. 검증된 Action만 State Transition에 전달합니다.
-5. 신뢰도가 낮고 대상이 불명확하면 정책을 추측하지 않고 Clarify로 이동합니다.
+3. 복합 문장은 코드가 실제 작업 동사와 순서를 다시 추출하여 GPT의 `tasks`·`workflow`와 대조합니다.
+4. GPT가 설명+추천 중 하나를 누락해도 코드가 누락 Task와 해당 정책/분야 대상을 복구합니다. 현재 문장에 명시된 공식 정책과 관심 분야는 과거 Context보다 우선합니다.
+5. 완성된 Action, Task, 관심 분야, 정책명, Workflow step을 허용값 기준으로 다시 검증합니다.
+6. 검증된 Atomic Action만 State Transition에 전달합니다.
+7. Task는 분명하지만 정책·분야 정보만 부족하면 정책/관심분야 Clarify 카드로 이동합니다.
+8. Action·Task 자체를 이해하지 못했거나 Schema가 충돌하면 `CLARIFY`로 실행을 중단합니다.
 
 Prompt A를 Intent용과 Action용으로 두 번 호출하지 않습니다. 한 번의 구조화 응답에서 다음 정보를 함께 받습니다.
 
@@ -88,13 +143,17 @@ Prompt A를 Intent용과 Action용으로 두 번 호출하지 않습니다. 한 
   "tasks": ["RECOMMEND"],
   "topic": "취업",
   "exclude_topics": ["농업"],
+  "explore_without_profile": false,
   "policy_mention": null,
   "follow_up_field": null,
   "workflow": [
     {
+      "action": "CHANGE_TOPIC",
       "task": "RECOMMEND",
       "policy_mention": null,
-      "topic": "취업"
+      "topic": "취업",
+      "exclude_policy_mentions": [],
+      "explore_without_profile": false
     }
   ]
 }
@@ -106,7 +165,7 @@ Prompt A를 Intent용과 Action용으로 두 번 호출하지 않습니다. 한 
 
 ```text
 “다른 정책 없어?” 자연어 ─┐
-                            ├→ SHOW_ALTERNATIVES → 공통 Handler
+                            ├→ SHOW_ALTERNATIVES + RECOMMEND → 공통 Handler
 [다른 정책 보기] 버튼 ──────┘
 ```
 
@@ -115,6 +174,12 @@ Prompt A를 Intent용과 Action용으로 두 번 호출하지 않습니다. 한 
 - 자연어: 코드 규칙 또는 Prompt A가 Action 생성
 - 버튼: Frontend가 Action 직접 생성
 - 이후 State Transition, 검색, 답변 생성 과정은 동일
+
+`조건 없이 찾아보기`도 별도 예외 분기로 처리하지 않습니다. 버튼은
+`NORMAL + RECOMMEND + explore_without_profile: true`를 전송하고, 자연어의
+“조건 없이”, “프로필 없이”, “자격 판정 없이”도 같은 필드로 정규화됩니다.
+State Transition이 일어나도 이 필드가 Workflow step에 보존되므로 과거
+Profile 때문에 정책이 사라지거나 Profile 카드가 다시 열리지 않습니다.
 
 ---
 
@@ -133,15 +198,17 @@ Prompt A를 Intent용과 Action용으로 두 번 호출하지 않습니다. 한 
 | `active_workflow` | 복합 요청의 step, 현재 위치, 완료 결과 |
 | `policy_answers` | 정책별 추가 질문 답변 |
 | `last_action` | 직전에 처리한 Action |
+| `last_task`, `last_tasks` | 직전 단일·복합 실행 Task |
+| `last_intent_failure` | 자연어 해석 실패 원인 코드 |
 
 Action별 State 원칙은 다음과 같습니다.
 
-- `FOLLOW_UP`: 현재 단일 정책을 유지합니다.
-- `CHECK_ELIGIBILITY`: 정책명이 있거나 “그 정책”처럼 명시적으로 가리킬 때만 직전 정책을 사용합니다.
-- `SHOW_ALTERNATIVES`: 직전 정책이나 분야를 답변 대상으로 재사용하지 않고 제외 조건으로 사용합니다.
-- `CHANGE_TOPIC`: 이전 topic과 policy를 지우고 현재 문장에 나온 새 분야로 교체합니다.
-- `SEARCH_POLICY`: 새 정책명이 명확하면 과거 Context보다 현재 입력을 우선합니다.
+- `NORMAL`: Profile만 유지하고, 현재 발화의 새 정책·분야가 과거 policy/topic보다 우선합니다.
+- `FOLLOW_UP`: 명시적으로 참조한 직전 policy 또는 추천 결과만 유지합니다. Task는 현재 문장에서 다시 판단합니다.
+- `SHOW_ALTERNATIVES`: 직전 정책·분야를 제외 조건으로 바꾸고, 새 정책명이 있으면 새 대상을 최우선으로 설정합니다.
+- `CHANGE_TOPIC`: 이전 topic과 policy를 지우고 새 추천 분야로 교체합니다. `RECOMMEND` 이외의 Task와 결합되면 실행하지 않습니다.
 - `RESET`: 진행 중 카드, 후보, Workflow, 현재 정책·분야를 초기화합니다.
+- `CLARIFY`: 현재 policy/topic은 보존하지만 stale 카드와 Workflow는 닫고 안전 메뉴를 표시합니다.
 
 “다른 정책 자격을 확인하고 싶어”처럼 새 정책명이 없는 자격 전환은 직전 정책을 다시 판정하지 않습니다. `CLARIFY_POLICY`로 이동하여 사용자가 정책을 선택하게 합니다.
 
@@ -265,6 +332,8 @@ EXPLAIN은 유사도 1위라는 이유만으로 정책을 선택하지 않습니
 - 맞춤 추천: 저장 Profile로 명확한 FAIL을 제외합니다.
 - 조건 없이 탐색: 개인 자격을 판정하지 않고 분야 관련 정책 개요를 보여줍니다.
 - 두 모드 모두 GPT가 후보의 의미 적합성을 검토할 수 있지만 공식 후보 밖의 정책 ID를 만들 수 없습니다.
+- 조건 없이 탐색에서는 Profile 값이 `None`인 항목을 FAIL로 해석하지 않습니다. 실제로 입력된 값이 공식 조건과 충돌할 때만 맞춤 추천에서 명확한 FAIL로 제외합니다.
+- 정보·시설 안내 7개는 추천 카드에는 등장할 수 있지만 자격 확인 버튼은 표시하지 않습니다. 자연어로 자격을 물으면 PASS/FAIL 대신 모집공고·예약 페이지 확인 안내를 제공합니다.
 
 `SHOW_ALTERNATIVES`에서는 이전 정책 ID나 분야를 제외한 후 다시 추천합니다. GPT가 제외 대상을 다시 상위에 올려도 코드가 최종 제외 조건을 한 번 더 적용합니다.
 
@@ -332,8 +401,8 @@ GPT는 다음 자료만 받습니다.
 ```python
 {
     "steps": [
-        {"task": "EXPLAIN", "policy_mention": "청년월세", "topic": None},
-        {"task": "ELIGIBILITY", "policy_mention": "청년기본소득", "topic": None}
+        {"action": "NORMAL", "task": "EXPLAIN", "policy_mention": "청년월세", "topic": None},
+        {"action": "NORMAL", "task": "ELIGIBILITY", "policy_mention": "청년기본소득", "topic": None}
     ],
     "index": 0,
     "results": {},
@@ -341,24 +410,51 @@ GPT는 다음 자료만 받습니다.
 }
 ```
 
-### 설명 + 추천
+### Resolve → Transition → Execute → Pause → Resume
 
-예: “취업성공 프로젝트를 설명하고 농업 정책도 추천해줘”
+1. Prompt A가 문장을 의미 단위로 나눕니다.
+2. 코드가 문장의 설명·추천·자격 동사와 순서를 독립적으로 추출하여 Prompt A 결과의 누락 여부를 검사합니다.
+3. GPT step과 코드 step을 Task별로 병합합니다. 현재 문장에 명시된 공식 정책명과 관심 분야는 이전 State에서 가져온 대상보다 우선합니다.
+4. 각 step의 `policy_id`, `topic`, 제외 정책을 현재 State가 바뀌기 전에 resolve합니다.
+5. 완성된 Workflow를 저장합니다.
+6. 현재 step의 Action으로 State를 유지·제외·교체합니다.
+7. Task를 실행합니다.
+8. 정보가 부족하면 현재 `index`에서 멈춥니다.
+9. 카드 답변을 저장한 뒤 같은 step부터 재개합니다. 완료된 앞 step은 다시 실행하지 않습니다.
 
-1. Prompt A가 EXPLAIN의 정책 대상과 RECOMMEND의 관심 분야를 서로 다른 Workflow step으로 분리합니다.
-2. EXPLAIN은 지정된 정책 원문과 Summary를 사용해 설명 결과를 먼저 만들고 내부 `results`에 저장합니다.
-3. RECOMMEND는 설명 정책을 추천 분야로 재사용하지 않고, 자기 step의 `topic`과 Profile을 사용합니다.
-4. 추천에 관심 분야나 Profile이 부족하면 Workflow를 RECOMMEND 위치에서 멈추고 필요한 카드만 표시합니다. 저장된 설명은 이 시점에 중복 노출하지 않습니다.
-5. 입력이 완료되면 같은 RECOMMEND step부터 재개하고, 마지막에 `[정책 설명]`과 `[맞춤 추천 결과]`를 함께 반환합니다.
-6. 설명 대상과 추천 분야가 서로 달라도 `policy_mention`과 `topic`을 step별로 보존하므로 서로 섞이지 않습니다.
+예를 들어 “이 정책 설명해주고 다른 건 없어?”는 다음 두 단위입니다.
 
 ```text
-EXPLAIN(취업성공 프로젝트)
-→ 설명 결과 임시 저장
-→ RECOMMEND(농업)
-→ 필요하면 관심 분야/Profile 질문 후 재개
-→ 정책 설명 + 농업 맞춤 추천 최종 결합
+FOLLOW_UP + EXPLAIN           (직전 정책 ID를 먼저 고정)
+SHOW_ALTERNATIVES + RECOMMEND (직전 정책 ID를 제외 대상으로 먼저 고정)
 ```
+
+두 번째 Action이 policy State를 초기화하더라도 첫 번째 설명 대상과 제외 ID는 이미 Workflow에 저장되어 사라지지 않습니다.
+
+### 설명 + 추천
+
+예: “안녕 나 입영지원금 설명해주고, 복지 분야에서 정책 하나 추천해줘”
+
+1. Prompt A가 EXPLAIN의 정책 대상과 RECOMMEND의 관심 분야를 서로 다른 Workflow step으로 분리합니다.
+2. GPT가 추천 Task만 반환하더라도 코드 완전성 검사가 문장 속 “설명”을 찾아 `EXPLAIN(입영지원금)`을 복구합니다.
+3. EXPLAIN은 지정된 정책 원문과 Summary를 사용해 설명 결과를 먼저 만들고 내부 `results`에 저장합니다.
+4. RECOMMEND는 설명 정책을 추천 분야로 재사용하지 않고, 자기 step의 `topic=복지`와 Profile을 사용합니다.
+5. 추천에 관심 분야나 Profile이 부족하면 Workflow를 RECOMMEND 위치에서 멈추고 필요한 카드만 표시합니다. 화면에는 설명이 준비됐으며 추천 입력 뒤 두 결과를 묶겠다는 안내를 표시합니다.
+6. 입력이 완료되면 같은 RECOMMEND step부터 재개하고, 마지막에 `[정책 설명]`과 `[맞춤 추천 결과]`를 사용자 요청 순서로 함께 반환합니다.
+7. 각 블록 앞에는 “먼저 입영지원금 지원에 대해 설명해드릴게요”, “이어서 복지 분야에서 정책을 추천해드릴게요”처럼 실제 대상을 확인하는 문장을 표시합니다.
+
+```text
+EXPLAIN(입영지원금 지원)
+→ 설명 결과 임시 저장
+→ RECOMMEND(복지)
+→ 필요하면 관심 분야/Profile 질문 후 재개
+→ 입영지원금 설명 + 복지 맞춤 추천 최종 결합
+```
+
+“창업 정책 설명해주고 농업 분야에서 추천해줘”처럼 첫 대상이 여러 정책에
+걸리면 임의의 창업 정책을 고르지 않습니다. 먼저 설명할 창업 정책 선택 카드를
+보여주면서 “그다음 농업 분야 추천까지 이어갈게요”라고 Workflow를 예고합니다.
+사용자가 정책을 선택하면 중단 지점부터 재개합니다.
 
 ### 설명 + 자격
 
@@ -383,6 +479,17 @@ EXPLAIN(취업성공 프로젝트)
 ---
 
 ## 10. Clarify와 카드 원리
+
+`CLARIFY` Action과 아래 정보수집 Clarify는 서로 다릅니다.
+
+- `CLARIFY` Action: 자연어 의미, Task 또는 Action+Task 조합을 신뢰성 있게 판단하지 못한 실패 경로입니다. 정책 실행과 RAG를 중단합니다.
+- `CLARIFY_*` State: Task는 확정됐지만 정책명·관심 분야·Profile·추가 조건이 부족하여 사용자 입력을 기다리는 정상 경로입니다.
+
+해석 실패 응답:
+
+> 말씀하신 내용을 정책 요청으로 정확히 이해하지 못했어요. 정책명과 궁금한 내용(설명·추천·자격)을 함께 적거나, 아래에서 원하는 기능을 선택해주세요. 무엇을 도와드릴까요?
+
+이 응답에는 정책 알아보기, 맞춤 추천받기, 자격 확인하기 버튼이 함께 표시됩니다. 실패 입력으로 현재 policy/topic을 바꾸지 않지만, 오래된 카드와 Workflow는 닫아 다음 입력이 과거 질문의 답으로 잘못 저장되지 않게 합니다.
 
 | Clarify | 발생 조건 | 화면 |
 |---|---|---|
@@ -416,7 +523,7 @@ EXPLAIN(취업성공 프로젝트)
   "session_id": "browser-session-id",
   "message": "청년기본소득 자격 확인해줘",
   "action": {
-    "action": "CHECK_ELIGIBILITY",
+    "action": "NORMAL",
     "tasks": ["ELIGIBILITY"],
     "policy_id": "NYJ-YOUTH-010",
     "policy_mention": "청년기본소득",
@@ -430,24 +537,50 @@ FastAPI는 세션별 잠금으로 같은 사용자의 중복 요청을 직렬화
 
 ---
 
-## 12. 대표 사용자 시나리오 10개
+## 12. 최종 검증 범위와 결과
 
-`test_action_workflow.py`는 다음 10개 흐름을 검증합니다.
+최종 검증은 외부 API 응답의 우연한 문장 차이가 아니라
+`Action → Task → State → 정책 ID → 사용자 응답` 계약을 검사합니다. GPT가
+응답하지 않는 경우의 규칙 복구도 포함하며, GPT JSON 계약과 보수적 병합은
+별도 단위 테스트로 검증합니다.
 
-| 번호 | 입력 또는 흐름 | 기대 결과 | 결과 |
-|---:|---|---|---|
-| 1 | 농업 Context에서 “농업 말고 취업 정책 알려줘” | CHANGE_TOPIC, 취업으로 교체, 농업 제외 | PASS |
-| 2 | 현재 정책에서 “그거 말고 다른 거” | SHOW_ALTERNATIVES, 현재 정책 제외 | PASS |
-| 3 | “취업성공 프로젝트를 설명하고 농업 정책도 추천해줘” | 설명 대상과 추천 분야를 분리하고 두 결과 결합 | PASS |
-| 4 | 자연어 “다른 정책 없어?”와 버튼 “다른 정책 보기” | 동일 Action과 State Transition | PASS |
-| 5 | “다른 정책 자격을 확인하고 싶어” | 과거 정책 제거 후 정책 선택 요구 | PASS |
-| 6 | 직전 정책의 신청 기간 후속 질문 | RAG 없이 현재 Bundle의 기간·링크 반환 | PASS |
-| 7 | 설명+자격 중 자격 정보 부족 | 설명을 숨기고 질문 후 최종 결합 | PASS |
-| 8 | 추천+자격인데 대상 정책 없음 | 추천 1위 임의 선택 금지, 정책 선택 카드 | PASS |
-| 9 | 설명 정책과 자격 정책이 서로 다름 | step별 정책명 독립 유지 | PASS |
-| 10 | 정책 선택·자격·대안 버튼 | `dispatchAction()`을 통한 공통 Action 전송 | PASS |
+### 32개 정책 전수 매트릭스
 
-CI는 위 10개 외에도 기존 Intent, State, 32개 정책 데이터 계약 테스트를 함께 실행합니다.
+| 검증 묶음 | 시나리오 수 | 확인 내용 | 결과 |
+|---|---:|---|---|
+| 자연어 정책 설명 | 32 | 정확한 policy_id, 정책명, 공식 링크 | PASS |
+| 설명 버튼 | 32 | `NORMAL + EXPLAIN`, 자연어와 같은 실행기 | PASS |
+| 자연어 자격 확인 | 25 | 신청형 정책 선택, 설명 혼입 방지, 링크 | PASS |
+| 자격 확인 버튼 | 25 | `NORMAL + ELIGIBILITY`, 정확한 정책 유지 | PASS |
+| 정보·시설 자격 질문 | 7 | PASS/FAIL 금지, INFO_ONLY 안내 | PASS |
+| 직전 정책 기반 자연어 추천 | 32 | `FOLLOW_UP + RECOMMEND`, 공식 관심 분야 seed | PASS |
+| 추천 분야·조건 없는 버튼 | 9 | 표준 분야, 탐색 모드, 정책 카드 생성 | PASS |
+| 추천 카드 자격 버튼 계약 | 32 | 신청형 25개만 버튼 허용, INFO_ONLY 7개 차단 | PASS |
+| 주제 전환·대안·후속 표현 | 6 | Action과 현재 발화 우선순위 | PASS |
+| 해석 불가 입력 | 5 | CLARIFY 안전 메뉴와 stale 카드 종료 | PASS |
+| 3단계 멀티쿼리 | 1 | 대상 선결정, 제외 정책, Task 순서 | PASS |
+| 카탈로그 분할 | 1 | 설명 32 / 자격 25 / INFO_ONLY 7 | PASS |
+| 연속 대화·복합 Task 누락 복구 | 8 | GPT가 한 Task만 반환한 재현, 인사말 포함, 역순 Task, 동일 문장 FOLLOW_UP, 대안 목록 전체 제외, 묶음 순서 | PASS |
+
+세부 정책·대화 시나리오는 **215/215 PASS**, 전체 회귀 테스트는
+**54/54 PASS**입니다.
+
+### 데이터·링크 감사
+
+`audit_policy_catalog.py`가 원본과 운영 데이터를 전수 비교합니다.
+
+| 감사 대상 | 결과 |
+|---|---|
+| `policy_origin.zip` 원본 | 32개 |
+| 추출 원문 | 32개 |
+| Summary | 32개 |
+| Eligibility Rules | 32개 |
+| 정책별 추가 질문 | 56개 |
+| 구조·ID·조건·공식 링크 오류 | 0건 |
+| 원문 수동 재확인 경고 | 0건 |
+
+감사 결과는 `policy_full_coverage_matrix.md`와
+`policy_data_audit.json`에 정책별로 기록됩니다.
 
 ---
 
@@ -483,6 +616,22 @@ static/index.html
 
 test_action_workflow.py
   자연어·버튼·멀티쿼리 대표 10개 테스트
+
+test_action_task_backbone.py
+  Action/Task 독립, 해석 실패 CLARIFY,
+  대상 선고정과 새 정책 우선 회귀 테스트
+
+test_policy_agent_matrix.py
+  32개 정책 설명·추천·자격 자연어/버튼 전수 매트릭스,
+  INFO_ONLY·전환·멀티쿼리·오입력 검증
+
+test_conversation_workflows.py
+  GPT Task 누락 재현과 코드 복구,
+  설명+추천·추천+자격 순서, 동일 문장 FOLLOW_UP,
+  "이거 말고 다른 거" 결과 묶음 제외 검증
+
+audit_policy_catalog.py
+  원본 ZIP·추출본·Summary·Rules·공식 링크 전수 감사
 ```
 
 ---
@@ -529,7 +678,13 @@ python -m unittest test_action_workflow.py -v
 전체 CI 대상:
 
 ```bash
-python -m unittest test_intent_regression.py test_hardening.py test_action_workflow.py -v
+python -m unittest test_intent_regression.py test_hardening.py test_action_workflow.py test_action_task_backbone.py test_policy_agent_matrix.py test_conversation_workflows.py -v
+```
+
+정책 데이터 감사:
+
+```bash
+python audit_policy_catalog.py
 ```
 
 ---
