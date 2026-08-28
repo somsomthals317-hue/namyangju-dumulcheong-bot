@@ -26,6 +26,10 @@ def get_default_state():
         "focus_policy_id": None,
         # 직전 검색·추천 결과와 현재 실행 중인 멀티쿼리
         "last_result_policy_ids": [],
+        # 추천 뒤 특정 정책 설명으로 이동해도 "다른 분야"가 직전 추천
+        # 문맥을 잃지 않도록 마지막 추천 묶음을 별도로 보존한다.
+        "last_recommendation_topic": None,
+        "last_recommendation_policy_ids": [],
         "active_workflow": None,
         "last_action": None,
         "last_task": None,
