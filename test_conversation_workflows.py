@@ -417,7 +417,23 @@ class ConversationWorkflowRegressionTests(unittest.TestCase):
             "tasks": ["EXPLAIN", "ELIGIBILITY"],
             "topic": None,
             "policy_mention": "입영지원금",
-            "workflow": [],
+            # 실서비스에서 재현된 잘못된 모델 출력: 두 번째 대명사 step을
+            # FOLLOW_UP이 아닌 NORMAL+대상 없음으로 반환했다.
+            "workflow": [
+                {
+                    "action": "NORMAL",
+                    "task": "EXPLAIN",
+                    "policy_mention": "입영지원금",
+                    "topic": None,
+                },
+                {
+                    "action": "NORMAL",
+                    "task": "ELIGIBILITY",
+                    "policy_mention": None,
+                    "topic": None,
+                    "use_previous_context": False,
+                },
+            ],
             "profile_patch": {},
             "clarify_reasons": [],
         }

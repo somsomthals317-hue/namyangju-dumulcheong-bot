@@ -3685,6 +3685,15 @@ def ensure_multi_task_workflow(state, message, tasks, clarify_reasons, bundles):
             step["policy_mention"] = fallback.get("policy_mention")
         if fallback["task"] == "RECOMMEND" and fallback.get("topic"):
             step["topic"] = fallback["topic"]
+        # 같은 발화 안에서 "내가/그 정책/나도"가 앞 Atomic Unit을 명시적으로
+        # 가리키면 코드가 이미 앞 정책 ID 상속 관계를 확인한 것이다. 모델이
+        # 두 번째 step을 NORMAL로 반환해도 이 참조를 끊어 정책 전체 선택 카드로
+        # 보내지 않는다.
+        if fallback.get("action") == "FOLLOW_UP" and fallback.get("use_previous_context"):
+            step["action"] = "FOLLOW_UP"
+            step["use_previous_context"] = True
+            step["policy_id"] = fallback.get("policy_id")
+            step["policy_mention"] = fallback.get("policy_mention")
         step["task"] = fallback["task"]
         merged.append(step)
 
