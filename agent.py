@@ -659,13 +659,20 @@ def extract_explicit_age(text):
     return None
 
 
-def resume_after_age_update(state, age, collection, bundles):
+def resume_after_age_update(state, age, collection, bundles, profile_text=None):
     """만 나이를 저장하고, 나이 확인 전에 진행 중이던 Clarify를 안전하게 이어간다."""
     update_profile(state, {"age": age})
     clarify_type = state.get("active_clarify")
 
     if clarify_type == "CLARIFY_PROFILE":
-        return handle_clarify_answer(state, f"만 {age}세", collection, bundles)
+        # 한 문장에 나이와 거주지 등 여러 값이 함께 들어온 경우 나이만 남기지
+        # 않는다. 원문을 Profile 파서에 전달해 같은 턴의 모든 값을 저장한다.
+        return handle_clarify_answer(
+            state,
+            profile_text or f"만 {age}세",
+            collection,
+            bundles,
+        )
     if clarify_type == "CLARIFY_POLICY":
         return f"만 나이 {age}세로 저장했어요.\n\n" + generate_clarify_question(state, clarify_type)
     if clarify_type == "CLARIFY_PREFERENCE":
@@ -708,7 +715,9 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None, input_a
         # 확인 질문 뒤에 "만 나이가 24살"처럼 명확하게 다시 말하면 즉시 저장한다.
         if pending_age is not None and explicit_age is not None:
             state.pop("_pending_age_confirmation", None)
-            response = resume_after_age_update(state, explicit_age, collection, bundles)
+            response = resume_after_age_update(
+                state, explicit_age, collection, bundles, profile_text=answer
+            )
             state["messages"].append({"role": "assistant", "content": response})
             return state, response
 
@@ -740,7 +749,9 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None, input_a
             if has_task_request and not state.get("active_clarify"):
                 update_profile(state, {"age": explicit_age})
             else:
-                response = resume_after_age_update(state, explicit_age, collection, bundles)
+                response = resume_after_age_update(
+                    state, explicit_age, collection, bundles, profile_text=answer
+                )
                 state["messages"].append({"role": "assistant", "content": response})
                 return state, response
 
@@ -948,7 +959,7 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None, input_a
             resolve_policy_alias(msg)
             and not _is_explicit_recommend_request(msg)
             and not re.search(
-                r"자격\s*(?:이\s*)?(?:확인|봐|검토|되|돼|있)|"
+                r"자격\s*(?:(?:도|을|이)\s*)?(?:확인|봐|검토|되|돼|있)|"
                 r"가능한지|되는지\s*(?:안\s*되는지)?|"
                 r"참여\s*(?:할\s*)?(?:수\s*있|가능)|"
                 r"신청\s*(?:할\s*)?(?:수\s*있|가능)|"
@@ -1027,7 +1038,7 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None, input_a
         msg_lower = user_message.lower() if user_message else ""
         is_eligibility_request = False
         eligibility_pattern = re.search(
-            r"자격\s*(?:이\s*)?(?:확인|되|돼|있)|"
+            r"자격\s*(?:(?:도|을|이)\s*)?(?:확인|되|돼|있)|"
             r"가능한지|되는지\s*(?:안\s*되는지)?|나도\s*가능|"
             r"참여\s*(?:할\s*)?(?:수\s*있|가능)|"
             r"신청\s*(?:할\s*)?(?:수\s*있|가능)|"
@@ -1041,7 +1052,8 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None, input_a
         
         if is_eligibility_request and not _is_multi_interest_eligibility_request(user_message):
             # 설명을 함께 요청한 복합문장이 아니면 GPT가 EXPLAIN을 추가했더라도 제거한다.
-            if _is_multi_explain_eligibility_request(user_message):
+            multi_explain_eligibility = _is_multi_explain_eligibility_request(user_message)
+            if multi_explain_eligibility:
                 if "ELIGIBILITY" not in tasks:
                     tasks.append("ELIGIBILITY")
             else:
@@ -1062,6 +1074,7 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None, input_a
             if any(ref in user_message for ref in ["나도 가능", "저도 가능", "내가 가능", "나도 되", "저도 되", "이 정책 가능", "그 정책 가능"]):
                 state["_policy_mention"] = user_message
             for suffix in [
+                "자격도 확인해줘", "자격도 확인해 줘", "자격을 확인해줘", "자격을 확인해 줘",
                 "자격 확인해줘", "자격확인해줘", "가능한지 알아보기",
                 "참여할 수 있어?", "참여할 수 있나요?", "참여 가능해요?", "참여 가능해?",
                 "신청할 수 있어?", "신청할 수 있나요?", "신청 가능해요?", "신청 가능해?",
@@ -1073,6 +1086,20 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None, input_a
                     if mention and mention not in ("나도", "저도", "내가"):
                         state["_policy_mention"] = mention
                     break
+            if not multi_explain_eligibility:
+                # Task만 ELIGIBILITY로 보정하고 모델이 만든 EXPLAIN Workflow를
+                # 남겨두면 실행 단계에서 다시 설명으로 되돌아간다. Action+Task
+                # 원자 단위도 같은 대상의 자격 확인으로 함께 교체한다.
+                focus_reference = _has_focus_reference(user_message)
+                state["_intent_workflow"] = [{
+                    "action": "FOLLOW_UP" if focus_reference else "NORMAL",
+                    "task": "ELIGIBILITY",
+                    "policy_mention": None if focus_reference else state.get("_policy_mention"),
+                    "topic": None,
+                    "use_previous_context": focus_reference,
+                    "exclude_topics": [],
+                    "exclude_policy_ids": [],
+                }]
 
     
     # 추천 분야는 구조화해 저장하되 GPT 의미 판정에는 사용자의 원문도
@@ -1311,6 +1338,174 @@ def generate_clarify_question(state, clarify_type):
     return CLARIFY_MESSAGES.get(clarify_type, "추가 정보가 필요합니다. 자세히 알려주세요.")
 
 
+def _normalize_profile_patch(raw_patch):
+    """자연어/모델 Profile 값을 UI에서 쓰는 고정 enum으로 제한한다."""
+    if not isinstance(raw_patch, dict):
+        return {}
+    normalized = {}
+    age = raw_patch.get("age")
+    try:
+        age = int(age) if age is not None else None
+    except (TypeError, ValueError):
+        age = None
+    if age is not None and 0 <= age <= 100:
+        normalized["age"] = age
+
+    enums = {
+        "residency": {"예", "아니오"},
+        "employment": {"취업", "미취업"},
+        "student": {"대학생", "고등학생", "대학원생", "아니오"},
+        "startup": {"창업 중", "창업 준비 중", "창업하지 않음"},
+        "housing": {"무주택", "유주택"},
+        "marriage": {"미혼", "기혼"},
+    }
+    aliases = {
+        "네": "예", "아니요": "아니오", "거주": "예", "비거주": "아니오",
+        "재직": "취업", "구직": "미취업", "취준": "미취업",
+        "학생 아님": "아니오", "비학생": "아니오",
+        "예비창업": "창업 준비 중", "미창업": "창업하지 않음",
+        "자가": "유주택", "기혼자": "기혼", "미혼자": "미혼",
+    }
+    for key, allowed in enums.items():
+        value = raw_patch.get(key)
+        if value is None:
+            continue
+        value = aliases.get(str(value).strip(), str(value).strip())
+        if value in allowed:
+            normalized[key] = value
+    return normalized
+
+
+def extract_profile_patch_from_text(text):
+    """자주 쓰는 Profile 자연어를 결정론적으로 구조화한다.
+
+    Prompt A/보조 GPT가 일시적으로 흔들려도 카드와 같은 enum 값으로 수렴하게
+    하는 안전망이다. 명시되지 않은 값은 절대 추측하지 않는다.
+    """
+    value = (text or "").strip()
+    compact = re.sub(r"\s+", "", value)
+    patch = {}
+    age = extract_explicit_age(value)
+    if age is not None:
+        patch["age"] = age
+
+    if re.search(r"남양주(?:시)?(?:에|에서)?(?:주민등록|거주|살)", compact):
+        if re.search(r"남양주.{0,12}(?:아니|않|안살|밖|외)", compact):
+            patch["residency"] = "아니오"
+        else:
+            patch["residency"] = "예"
+    elif re.search(r"남양주(?:시)?(?:주민|시민|거주자)", compact):
+        patch["residency"] = "예"
+
+    if re.search(r"미취업|취준|구직\s*중|일을?\s*안\s*(?:해|하고)|무직", value):
+        patch["employment"] = "미취업"
+    elif re.search(r"재직|직장(?:에)?\s*다|취업\s*(?:했|중|해)|근무\s*중", value):
+        patch["employment"] = "취업"
+
+    if re.search(r"대학원생|대학원\s*재학", value):
+        patch["student"] = "대학원생"
+    elif re.search(r"대학생|대학교\s*재학", value):
+        patch["student"] = "대학생"
+    elif re.search(r"고등학생|고등학교\s*재학", value):
+        patch["student"] = "고등학생"
+    elif re.search(r"학생\s*(?:이\s*)?(?:아니|아님)|비학생", value):
+        patch["student"] = "아니오"
+
+    if re.search(r"예비\s*창업|창업\s*(?:준비|예정)", value):
+        patch["startup"] = "창업 준비 중"
+    elif re.search(r"창업\s*(?:중|했|운영)|사업체\s*(?:운영|있)", value):
+        patch["startup"] = "창업 중"
+    elif re.search(r"미창업|창업\s*(?:안|하지\s*않|한\s*적\s*없)", value):
+        patch["startup"] = "창업하지 않음"
+
+    if re.search(r"무주택|집(?:이|은)?\s*없|주택\s*없", value):
+        patch["housing"] = "무주택"
+    elif re.search(r"유주택|자가\s*(?:있|보유)|주택\s*보유", value):
+        patch["housing"] = "유주택"
+
+    if re.search(r"미혼|결혼\s*(?:안|하지\s*않)", value):
+        patch["marriage"] = "미혼"
+    elif re.search(r"기혼|결혼\s*(?:했|함)", value):
+        patch["marriage"] = "기혼"
+    return patch
+
+
+def _normalize_option_answer(answer, options):
+    value = str(answer or "").strip()
+    if not value:
+        return None
+    if value in options or not options:
+        return value
+    if "잘 모르겠음" in options and re.search(r"모르|확실하지|확인\s*필요", value):
+        return "잘 모르겠음"
+    if "아니오" in options and re.search(r"아니|안\s*돼|못|미만|없(?:어|음|다)", value):
+        return "아니오"
+    if "예" in options and re.search(r"^(?:예|네|맞아|맞습니다)$", value):
+        return "예"
+    return None
+
+
+def extract_additional_answers(user_message, questions):
+    """한 자연어 답변에서 현재 보이는 추가 질문별 답을 안전하게 분리한다."""
+    text = (user_message or "").strip()
+    if not text or not questions:
+        return {}
+    # 카드의 짧은 단일 답변은 첫 질문에만 적용한다.
+    first = _normalize_option_answer(text, questions[0].get("options", []))
+    if first and len(text) <= 8:
+        return {questions[0]["question_id"]: first}
+
+    answers = {}
+    clauses = [item.strip() for item in re.split(r"[,.;\n]|그리고", text) if item.strip()]
+    by_id = {question.get("question_id"): question for question in questions}
+
+    date_match = re.search(r"(?:19|20)\d{2}[-./년]\s*\d{1,2}[-./월]\s*\d{1,2}(?:일)?", text)
+    if "birth_date" in by_id and date_match:
+        raw_date = date_match.group(0)
+        nums = re.findall(r"\d+", raw_date)
+        if len(nums) >= 3:
+            answers["birth_date"] = f"{int(nums[0]):04d}-{int(nums[1]):02d}-{int(nums[2]):02d}"
+
+    known_clauses = {
+        "gyeonggi_three_years": next((c for c in clauses if "3년" in c and ("경기" in c or "계속" in c)), None),
+        "gyeonggi_ten_years": next((c for c in clauses if "10년" in c or "합산" in c), None),
+    }
+    for qid, clause in known_clauses.items():
+        question = by_id.get(qid)
+        if not question or not clause:
+            continue
+        if re.search(r"아니|안\s*돼|못|미만|되지\s*않|안\s*살", clause):
+            answers[qid] = "아니오"
+        elif re.search(r"이상|넘(?:게|었)|계속|살았|거주했|예|맞", clause):
+            answers[qid] = "예"
+
+    # 알려진 표현만으로 충분하지 않은 긴 복합 답변은 GPT가 질문별로 보조
+    # 구조화한다. 아래 검증에서 현재 질문 ID와 공식 선택지만 허용한다.
+    if len(answers) < len(questions) and len(text) > 8:
+        prompt = f"""사용자의 추가 자격 답변을 질문별 JSON으로 분리하세요.
+질문: {json.dumps(questions, ensure_ascii=False)}
+사용자 답변: {json.dumps(text, ensure_ascii=False)}
+
+반환 형식: {{"answers": {{"question_id": "답변"}}}}
+규칙:
+- 사용자가 명확히 답한 질문만 포함하세요.
+- options가 있으면 반드시 그 options 중 하나만 사용하세요.
+- 예/아니오 의미를 문맥에 맞게 정규화하세요.
+- 생년월일은 YYYY-MM-DD로 정규화하세요.
+- 추측하지 마세요."""
+        parsed = parse_json_response(call_openai(prompt, json_mode=True)) or {}
+        model_answers = parsed.get("answers", {}) if isinstance(parsed, dict) else {}
+        if isinstance(model_answers, dict):
+            for qid, answer in model_answers.items():
+                question = by_id.get(qid)
+                if not question or qid in answers:
+                    continue
+                normalized = _normalize_option_answer(answer, question.get("options", []))
+                if normalized:
+                    answers[qid] = normalized
+    return answers
+
+
 def handle_clarify_answer(state, user_message, collection, bundles):
     """Clarify 답변을 저장하고 단일/복합 Workflow를 정확한 지점부터 재개한다."""
     clarify_type = state["active_clarify"]
@@ -1346,7 +1541,13 @@ def handle_clarify_answer(state, user_message, collection, bundles):
                     save_policy_answer(state, policy_id, qid.strip(), answer.strip())
         else:
             questions = aq.get("questions", [])
-            if questions:
+            extracted_answers = extract_additional_answers(user_message, questions)
+            if extracted_answers:
+                for question_id, answer in extracted_answers.items():
+                    save_policy_answer(state, policy_id, question_id, answer)
+            elif questions and not questions[0].get("options"):
+                # 자유입력 질문만 원문 보존을 허용한다. 선택형 문장을 해석하지
+                # 못한 경우 임의 문자열을 답으로 저장하지 않고 같은 질문을 다시 낸다.
                 save_policy_answer(
                     state, policy_id, questions[0]["question_id"], user_message.strip()
                 )
@@ -1365,21 +1566,23 @@ def handle_clarify_answer(state, user_message, collection, bundles):
             state["active_clarify"] = None
             state["_skip_profile_check"] = True
         else:
-            explicit_age = extract_explicit_age(user_message)
-            if explicit_age is not None:
-                update_profile(state, {"age": explicit_age})
-            else:
+            patch = extract_profile_patch_from_text(user_message)
+            requested_fields = state.get("_missing_fields") or get_missing_profile_fields(state["profile"])
+            if any(field not in patch for field in requested_fields):
                 parse_prompt = f"""사용자가 Profile 정보를 입력했습니다. 다음 JSON으로 추출하세요.
 사용자 답변: "{user_message}"
 
 {{"age": null 또는 정수, "residency": null 또는 "예"/"아니오", "employment": null 또는 "취업"/"미취업", "student": null 또는 해당값, "startup": null 또는 해당값, "housing": null 또는 해당값, "marriage": null 또는 해당값}}
 
 규칙: 명확히 알 수 있는 값만 채우고 나머지는 null로 두세요. "만 24세" → age: 24"""
-                patch = parse_json_response(call_openai(parse_prompt, json_mode=True))
-                if patch:
-                    clean_patch = {key: value for key, value in patch.items() if value is not None}
-                    if clean_patch:
-                        update_profile(state, clean_patch)
+                model_patch = _normalize_profile_patch(
+                    parse_json_response(call_openai(parse_prompt, json_mode=True))
+                )
+                model_patch.update(patch)  # 명시 정규식 값이 모델 추정보다 우선
+                patch = model_patch
+            patch = _normalize_profile_patch(patch)
+            if patch:
+                update_profile(state, patch)
             state["active_clarify"] = None
 
     if state.get("active_workflow"):
@@ -1615,36 +1818,60 @@ def _workflow_candidates(state, bundles):
     ][:8]
 
 
+def _workflow_future_plan(workflow):
+    """현재 중단 지점 뒤에 남은 작업을 사용자 문장으로 빠짐없이 요약한다."""
+    steps = workflow.get("steps", [])
+    index = int(workflow.get("index", 0) or 0)
+    phrases = []
+    for step in steps[index + 1:]:
+        task = step.get("task")
+        if task == "RECOMMEND":
+            topic = step.get("topic")
+            phrases.append(f"{topic} 분야 추천" if topic else "맞춤 추천")
+        elif task == "ELIGIBILITY":
+            target = step.get("policy_mention") or "선택한 정책"
+            phrases.append(f"{target} 자격 확인")
+        elif task == "EXPLAIN":
+            target = step.get("policy_mention") or "선택한 정책"
+            phrases.append(f"{target} 설명")
+    if not phrases:
+        return ""
+    if len(phrases) == 1:
+        return phrases[0]
+    return ", ".join(phrases[:-1]) + "과 " + phrases[-1]
+
+
 def _workflow_pause_response(workflow, task, question):
     """수집 중인 결과는 노출 범위를 제어하고 최종 묶음 답변을 예고한다."""
     results = workflow.get("results", {})
     steps = workflow.get("steps", [])
     if task == "EXPLAIN" and any(step.get("task") == "RECOMMEND" for step in steps):
-        recommend_step = next(
-            (step for step in steps if step.get("task") == "RECOMMEND"),
-            {},
-        )
-        topic = recommend_step.get("topic")
-        next_text = (
-            f"그다음 {topic} 분야 추천까지 이어갈게요."
-            if topic
-            else "그다음 맞춤 추천까지 이어갈게요."
-        )
+        future_plan = _workflow_future_plan(workflow)
+        next_text = f"그다음 {future_plan}까지 이어갈게요." if future_plan else ""
         return (
             "먼저 설명할 정책을 정확히 선택해주세요. "
             + next_text
-            + " 두 단계가 끝나면 한 답변으로 묶어드릴게요.\n\n"
+            + " 모든 단계가 끝나면 한 답변으로 묶어드릴게요.\n\n"
             + question
         )
     if task == "RECOMMEND" and "EXPLAIN" in results:
+        future_plan = _workflow_future_plan(workflow)
+        future_text = f" 그다음 {future_plan}까지 이어갈게요." if future_plan else ""
         return (
             "정책 설명은 준비해두었어요. 맞춤 추천에 필요한 정보까지 확인한 뒤 "
-            "두 결과를 한 답변으로 묶어드릴게요.\n\n" + question
+            + future_text
+            + " 모든 결과를 한 답변으로 묶어드릴게요.\n\n" + question
         )
     if task == "ELIGIBILITY" and "EXPLAIN" in results:
+        prepared = []
+        if "EXPLAIN" in results:
+            prepared.append("정책 설명")
+        if "RECOMMEND" in results:
+            prepared.append("맞춤 추천")
+        prepared_text = "과 ".join(prepared)
         return (
-            "자격 확인에 필요한 정보를 먼저 받을게요. 확인이 끝나면 "
-            "정책 설명과 자격 결과를 함께 정리해드릴게요.\n\n" + question
+            f"{prepared_text}은 준비해두었어요. 자격 확인에 필요한 정보를 먼저 받을게요. "
+            "확인이 끝나면 모든 결과를 함께 정리해드릴게요.\n\n" + question
         )
     if task == "ELIGIBILITY" and "RECOMMEND" in results:
         return (
@@ -3329,8 +3556,10 @@ def _clean_atomic_target(text):
     """복합 문장의 의미 단위에서 인사·연결어만 제거하고 대상어는 보존한다."""
     value = (text or "").strip(" ,/·;!?\t\n")
     value = re.sub(r"^(?:안녕(?:하세요)?|저기|그럼|그러면)\s*", "", value)
-    value = re.sub(r"^(?:나|나는|저|저는)\s+", "", value)
     value = re.sub(r"^(?:그리고|또|이어서|그다음(?:에)?|하고|해주고)\s*", "", value)
+    # 연결어를 먼저 지운 뒤 인칭 대명사를 한 번 더 지워야
+    # "설명해주고 내가 자격되는지"의 '내가'가 같은 발화 앞 정책을 가리킨다.
+    value = re.sub(r"^(?:나|나는|내가|저|저는|제가)\s*", "", value)
     value = re.sub(r"(?:해\s*주고|해주고|하고|한\s*뒤|다음에)\s*$", "", value)
     return value.strip(" ,/·;!?")
 
@@ -3359,7 +3588,8 @@ def infer_atomic_workflow_from_message(state, message, bundles):
     previous_end = 0
     previous_policy_id = state.get("current_policy_id") or state.get("focus_policy_id")
     for index, (start, end, task) in enumerate(cues):
-        target_text = _clean_atomic_target(message[previous_end:start])
+        raw_target_text = message[previous_end:start]
+        target_text = _clean_atomic_target(raw_target_text)
         next_start = cues[index + 1][0] if index + 1 < len(cues) else len(message)
         clause_text = message[previous_end:next_start]
         previous_end = end
@@ -3372,8 +3602,8 @@ def infer_atomic_workflow_from_message(state, message, bundles):
         intra_workflow_reference = bool(
             steps
             and re.search(
-                r"^(?:나도|저도|내가|그것도|이것도|그\s*정책|이\s*정책|그거|이거)",
-                target_text,
+                r"(?:나도|저도|내가|제가|그것도|이것도|그\s*정책|이\s*정책|그거|이거)",
+                raw_target_text,
             )
         )
         action = "SHOW_ALTERNATIVES" if alternative else (
@@ -3442,6 +3672,10 @@ def ensure_multi_task_workflow(state, message, tasks, clarify_reasons, bundles):
             value = existing.get(key)
             if value not in (None, "", []):
                 step[key] = value
+        # 사용자가 원문에 명시한 '조건 없이/프로필 없이'는 모델의 false보다
+        # 강한 사실이다. 이를 잃으면 복합 Workflow 중 불필요한 Profile 카드가 뜬다.
+        if fallback.get("explore_without_profile"):
+            step["explore_without_profile"] = True
         # 현재 문장 조각에 공식 정책/관심 분야가 명시되어 있으면 과거 Context에
         # 끌린 모델 대상보다 우선한다.
         fallback_policy_id = _policy_id_for_action(fallback, bundles)
@@ -3477,7 +3711,12 @@ def _is_multi_explain_eligibility_request(message):
     if not message:
         return False
     has_explain = bool(re.search(r"(설명|알려|뭐야)", message))
-    has_eligibility = any(p in message for p in ("자격 확인", "자격확인", "가능한지", "가능해", "나도 가능", "신청할 수"))
+    has_eligibility = bool(re.search(
+        r"자격\s*(?:(?:도|을|이)\s*)?(?:확인|되|돼|있)|"
+        r"가능한지|되는지|가능해|나도\s*가능|신청\s*(?:할\s*)?수|"
+        r"지원\s*(?:받을\s*)?수|대상인지",
+        message,
+    ))
     return has_explain and has_eligibility and any(hint in message for hint in POLICY_EXPLAIN_HINTS)
 
 
@@ -3495,7 +3734,7 @@ def _is_multi_interest_eligibility_request(message):
     if not message or "자격증" in message:
         return False
     has_eligibility = bool(re.search(
-        r"자격\s*(?:확인|봐|검토)|가능한지|신청\s*(?:할\s*)?수|지원\s*받을\s*수|대상인지",
+        r"자격\s*(?:(?:도|을|이)\s*)?(?:확인|봐|검토|되|돼)|가능한지|신청\s*(?:할\s*)?수|지원\s*받을\s*수|대상인지",
         message,
     ))
     interests = [item.strip() for item in normalize_interests(message).split(",") if item.strip()]
