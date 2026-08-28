@@ -1754,7 +1754,14 @@ def execute_active_workflow(state, collection, bundles):
                     collection,
                 )
         elif task == "RECOMMEND":
-            state["_recommend_query"] = workflow.get("original_query", "")
+            # 복합문장의 전체 원문에는 다른 step의 정책명/분야가 함께 있다.
+            # 예: "농업 설명 + 복지 추천"을 그대로 의미 정렬에 쓰면 농업
+            # 정책이 복지 후보로 역류할 수 있으므로 RECOMMEND 자기 topic만 쓴다.
+            state["_recommend_query"] = (
+                step.get("topic")
+                if len(steps) > 1 and step.get("topic")
+                else workflow.get("original_query", "")
+            )
             result = run_recommend(state, bundles)
         else:
             result = run_eligibility(state, bundles)

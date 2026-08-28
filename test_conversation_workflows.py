@@ -79,7 +79,11 @@ class ConversationWorkflowRegressionTests(unittest.TestCase):
             return "입영지원금 설명 본문"
 
         def fake_recommend(current_state, bundles):
-            seen.append(("RECOMMEND", current_state.get("interest_query")))
+            seen.append((
+                "RECOMMEND",
+                current_state.get("interest_query"),
+                current_state.get("_recommend_query"),
+            ))
             return "복지 추천 카드"
 
         with patch.object(
@@ -99,6 +103,7 @@ class ConversationWorkflowRegressionTests(unittest.TestCase):
         self.assertEqual([item[0] for item in seen], ["EXPLAIN", "RECOMMEND"])
         self.assertEqual(seen[0][1], "NYJ-YOUTH-016")
         self.assertEqual(seen[1][1], "복지")
+        self.assertEqual(seen[1][2], "복지")
         self.assertIn("먼저 입영지원금 지원에 대해 설명해드릴게요", response)
         self.assertIn("이어서 복지 분야에서 정책을 추천해드릴게요", response)
         self.assertIn("입영지원금 설명 본문", response)
