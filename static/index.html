@@ -413,6 +413,9 @@ function formatResponse(text) {
     html = html.replace(/\[ACTION_BTN:RESET_PROFILE:([^\]]+)\]/g, '<button class="elig-btn" onclick="resetAndShowFullCard(this)">👤 $1</button>');
     html = html.replace(/\[ACTION_BTN:RESET_CHAT:([^\]]+)\]/g, '<button class="elig-btn" onclick="resetChat()">🔄 $1</button>');
     html = html.replace(/\[ACTION_BTN:SHOW_ALTERNATIVES:([^\]]+)\]/g, '<button class="elig-btn" onclick="showAlternatives()">$1</button>');
+    html = html.replace(/\[ACTION_BTN:NORMAL_EXPLAIN:([^\]]+)\]/g, '<button class="elig-btn" onclick="startExplain()">📋 $1</button>');
+    html = html.replace(/\[ACTION_BTN:NORMAL_RECOMMEND:([^\]]+)\]/g, '<button class="elig-btn" onclick="startRecommend()">🎯 $1</button>');
+    html = html.replace(/\[ACTION_BTN:NORMAL_ELIGIBILITY:([^\]]+)\]/g, '<button class="elig-btn" onclick="startEligibility()">✅ $1</button>');
     html = html.replace(/\[ACTION_BTN:EDIT_ADDITIONAL:([^:]+):([^\]]+)\]/g, (m, id, label) => {
         return `<button class="elig-btn" onclick="editAdditionalAnswers('${id}', this)">✏️ ${label}</button>`;
     });
@@ -563,7 +566,7 @@ function onPolicySelected(btn, mode) {
     const policyId = policy ? policy.policy_id : null;
     const isExplain = mode === 'EXPLAIN';
     return dispatchAction({
-        action: isExplain ? 'SEARCH_POLICY' : 'CHECK_ELIGIBILITY',
+        action: 'NORMAL',
         tasks: [isExplain ? 'EXPLAIN' : 'ELIGIBILITY'],
         policy_id: policyId,
         policy_mention: policyName,
@@ -729,6 +732,14 @@ async function submitRecommendProfile(btn) {
                 ui_event: 'SUBMIT_RECOMMEND_PROFILE',
                 profile: profile,
                 interest: pendingInterest,
+                action: {
+                    action: 'NORMAL',
+                    tasks: ['RECOMMEND'],
+                    topic: pendingInterest,
+                    use_previous_context: false,
+                    explore_without_profile: true,
+                    confidence: 'high',
+                },
             }),
         });
         const data = await res.json();
@@ -761,6 +772,13 @@ async function exploreWithoutProfile(btn) {
                 session_id: SESSION_ID,
                 message: `조건 없이 ${pendingInterest} 추천해줘`,
                 interest: pendingInterest,
+                action: {
+                    action: 'NORMAL',
+                    tasks: ['RECOMMEND'],
+                    topic: pendingInterest,
+                    use_previous_context: false,
+                    confidence: 'high',
+                },
             }),
         });
         const data = await res.json();
@@ -776,13 +794,19 @@ function onInterestSelected(btn, interest) {
     // showInterestCardsInChat에서 사용 (단일 선택용 - Clarify에서)
     btn.closest('.interest-grid').querySelectorAll('.interest-btn').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
     btn.style.opacity = '1'; btn.style.background = '#1a5276'; btn.style.color = 'white';
-    sendMessage(`${interest} 분야 정책 추천해줘`);
+    dispatchAction({
+        action: 'NORMAL',
+        tasks: ['RECOMMEND'],
+        topic: interest,
+        use_previous_context: false,
+        confidence: 'high',
+    }, `${interest} 분야 정책 추천해줘`);
 }
 
 // === 자격확인 버튼 (UNKNOWN 정책에서) ===
 function checkEligibility(policyId, policyName) {
     return dispatchAction({
-        action: 'CHECK_ELIGIBILITY',
+        action: 'NORMAL',
         tasks: ['ELIGIBILITY'],
         policy_id: policyId,
         policy_mention: policyName,
@@ -1163,7 +1187,19 @@ async function postProfileAndRecommend(profile, skip) {
         // 프로필과 함께 추천 요청을 명시적으로 보냄
         const activeInterest = pendingInterest && pendingInterest.trim() ? pendingInterest.trim() : '전체';
         const message = skip ? `조건 없이 ${activeInterest} 추천해줘` : '프로필 입력 완료, 맞춤 추천해줘';
-        const payload = { session_id: SESSION_ID, message: message, interest: activeInterest };
+        const payload = {
+            session_id: SESSION_ID,
+            message: message,
+            interest: activeInterest,
+            action: {
+                action: 'NORMAL',
+                tasks: ['RECOMMEND'],
+                topic: activeInterest,
+                use_previous_context: false,
+                explore_without_profile: skip,
+                confidence: 'high',
+            },
+        };
         if (Object.keys(profile).length > 0) payload.profile = profile;
         const res = await apiFetch('/api/chat', {
             method: 'POST',
