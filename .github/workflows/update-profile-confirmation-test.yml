@@ -1,0 +1,36 @@
+name: Update profile confirmation regression
+
+on:
+  push:
+    branches:
+      - fix/natural-menu-profile-eligibility
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[profile-test-aligned]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/natural-menu-profile-eligibility
+      - name: Align legacy test with confirmation-card UX
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('test_conversation_workflows.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''        self.assertNotIn("찾지 못했어요", fallback_response)\n        self.assertTrue(fallback_state["last_result_policy_ids"])\n        by_id = {item["policy_id"]: item for item in BUNDLES}\n        for policy_id in fallback_state["last_result_policy_ids"]:\n            _, matched = agent._interest_match(by_id[policy_id], ["교육"])\n            self.assertNotIn("교육", matched)\n'''
+          new = '''        # 일반 대안/분야 전환은 즉시 추천을 실행하지 않고 저장된 Profile을\n        # prefill한 확인 카드에서 멈춘다. 카드 제출 후에만 새 결과가 생성된다.\n        self.assertNotIn("찾지 못했어요", fallback_response)\n        self.assertEqual(fallback_state["active_clarify"], "CLARIFY_PROFILE")\n        self.assertEqual(fallback_state["pending_tasks"], ["RECOMMEND"])\n        self.assertEqual(fallback_state["last_result_policy_ids"], [])\n        self.assertEqual(fallback_state["interest_query"], "전체")\n        self.assertEqual(fallback_state.get("_exclude_topics"), ["교육"])\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'confirmation expectation block count={text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add test_conversation_workflows.py
+          git commit -m "Align alternative recommendation test with profile confirmation [profile-test-aligned]"
+          git push origin HEAD:fix/natural-menu-profile-eligibility
