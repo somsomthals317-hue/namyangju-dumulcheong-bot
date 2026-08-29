@@ -223,6 +223,15 @@ async def chat(request: Request):
             state["selected_policy_id"] = target_policy
             state["focus_policy_id"] = target_policy
             state["_skip_profile_check"] = True
+            # 답변을 지울 때 정책 대상까지 잃지 않도록 같은 정책의 자격
+            # Workflow를 명시적으로 재개한다.
+            state["_intent_workflow"] = [{
+                "action": "FOLLOW_UP",
+                "task": "ELIGIBILITY",
+                "policy_id": target_policy,
+                "policy_mention": None,
+                "use_previous_context": True,
+            }]
 
         # 추천 시작 화면은 task를 실행하지 않고 깨끗한 상태만 반환한다.
         if ui_event == "START_RECOMMEND_RESET":
