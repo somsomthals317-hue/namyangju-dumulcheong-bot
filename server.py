@@ -17,6 +17,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import json
 
+import agent as agent_module
 from data_loader import (
     load_summary_documents, load_eligibility_rules,
     load_origin_documents, enrich_origin_policy_ids, build_policy_bundles
@@ -30,6 +31,43 @@ from agent import (
     POLICY_QUERY_ALIASES, analyze_user_turn, configure_openai,
     get_guardrail_response, handle_turn, resolve_policy_alias,
 )
+
+
+NAVIGATION_PROMPT_RULES = """
+
+추가 UI 전환 규칙:
+- "프로필 다시 설정할게", "프로필 다시 입력할래", "프로필 수정해서 다시 볼게"처럼 현재 자격조회 정책의 프로필만 다시 확인하려는 말은 전체 상담 RESET이 아닙니다. 현재 자격조회 정책을 유지하고 action=FOLLOW_UP, tasks=["ELIGIBILITY"], reuse_focus=true, use_previous_context=true로 판단하세요.
+- "다른 자격 조회할게", "다른 정책 자격 확인할래", "다른 자격도 볼래"처럼 새 정책의 자격을 고르려는 말은 action=SHOW_ALTERNATIVES, tasks=["ELIGIBILITY"], policy_mention=null, reuse_focus=false, use_previous_context=false로 판단하고 CLARIFY_POLICY가 필요합니다.
+- "대화 초기화할게", "대화 전부 초기화", "처음부터 새로 시작할게"처럼 상담 전체를 지우겠다는 의미일 때만 action=RESET을 사용하세요.
+- '프로필'이라는 말이 명시되어 있으면 프로필 재확인과 대화 전체 초기화를 구분하세요. 프로필 재확인을 RESET으로 분류하지 마세요.
+"""
+if NAVIGATION_PROMPT_RULES not in agent_module.PROMPT_A_INTENT:
+    agent_module.PROMPT_A_INTENT += NAVIGATION_PROMPT_RULES
+
+# 추천의 주제/대안 전환은 공통 Profile을 그대로 재사용한다.
+# 사용자가 명시적으로 '조건 없이/프로필 없이'를 요청한 경우에만 탐색 모드로 둔다.
+_ORIGINAL_APPLY_ACTION_TRANSITION = agent_module.apply_action_transition
+
+
+def _profile_preserving_action_transition(state, action, bundles, preserve_workflow=False):
+    result = _ORIGINAL_APPLY_ACTION_TRANSITION(
+        state, action, bundles, preserve_workflow=preserve_workflow
+    )
+    if isinstance(action, dict):
+        kind = action.get("action")
+        tasks = action.get("tasks") or []
+        if (
+            kind in {"CHANGE_TOPIC", "SHOW_ALTERNATIVES"}
+            and "RECOMMEND" in tasks
+            and action.get("explore_without_profile") is not True
+        ):
+            state.pop("_skip_profile_check", None)
+            state.pop("_explore_mode", None)
+    return result
+
+
+agent_module.apply_action_transition = _profile_preserving_action_transition
+
 
 # === 앱 초기화 ===
 app = FastAPI(title="두물청 API")
@@ -77,6 +115,7 @@ MAX_CONCURRENT_AGENT_CALLS = max(
 )
 agent_slots = asyncio.Semaphore(MAX_CONCURRENT_AGENT_CALLS)
 SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
+CHAT_SYNC_SCRIPT = '<script src="/static/navigation_sync.js"></script>'
 
 
 def validate_session_id(value):
@@ -128,6 +167,14 @@ def get_session_lock(session_id):
     return lock
 
 
+def _load_chat_html():
+    with open("static/index.html", "r", encoding="utf-8") as f:
+        content = f.read()
+    if CHAT_SYNC_SCRIPT not in content:
+        content = content.replace("</body>", f"{CHAT_SYNC_SCRIPT}\n</body>")
+    return content
+
+
 def _is_bare_policy_alias_message(message):
     """별칭 자체만 입력한 짧은 검색은 기존 빠른 EXPLAIN 경로를 유지한다."""
     compact = re.sub(r"[^0-9a-z가-힣]", "", str(message or "").lower())
@@ -138,6 +185,119 @@ def _is_bare_policy_alias_message(message):
         for aliases, _ in POLICY_QUERY_ALIASES
         for alias in aliases
     )
+
+
+def _is_profile_reset_candidate(message):
+    text = str(message or "")
+    return bool(
+        "프로필" in text
+        and re.search(r"다시|재설정|재입력|수정|바꿔|바꾸", text)
+    )
+
+
+def _is_other_eligibility_candidate(message):
+    text = str(message or "")
+    return bool(
+        re.search(r"다른|새(?:로운)?", text)
+        and re.search(r"자격|자격조회|자격\s*조회|자격\s*확인", text)
+    )
+
+
+def _is_chat_reset_candidate(message):
+    text = str(message or "")
+    return bool(re.search(r"대화\s*(?:전부\s*)?초기화|처음부터\s*(?:다시|새로)|전체\s*초기화|리셋", text))
+
+
+def _is_navigation_prompt_candidate(message):
+    return (
+        _is_profile_reset_candidate(message)
+        or _is_other_eligibility_candidate(message)
+        or _is_chat_reset_candidate(message)
+    )
+
+
+def _clear_intent_probe_artifacts(state):
+    for key in (
+        "_intent_workflow", "_intent_turn_kind", "_intent_reuse_focus",
+        "_intent_confidence", "_rewritten_query", "_normalized_action",
+    ):
+        state.pop(key, None)
+
+
+def _resolve_action_policy_id(action, message=""):
+    if not isinstance(action, dict):
+        return None
+    policy_id = str(action.get("policy_id") or "").strip() or None
+    if policy_id and any(bundle.get("policy_id") == policy_id for bundle in bundles):
+        return policy_id
+
+    mention = str(action.get("policy_mention") or "").strip()
+    for text in (mention, message):
+        if not text:
+            continue
+        alias_id = resolve_policy_alias(text)
+        if alias_id and any(bundle.get("policy_id") == alias_id for bundle in bundles):
+            return alias_id
+        compact = re.sub(r"[^0-9a-z가-힣]", "", text.lower())
+        exact = [
+            bundle.get("policy_id")
+            for bundle in bundles
+            if re.sub(r"[^0-9a-z가-힣]", "", str(bundle.get("policy_name") or "").lower()) in compact
+        ]
+        exact = [item for item in exact if item]
+        if len(exact) == 1:
+            return exact[0]
+    return None
+
+
+def _eligibility_bundle(policy_id):
+    return next(
+        (
+            bundle for bundle in bundles
+            if bundle.get("policy_id") == policy_id
+            and bundle.get("eligibility_mode") != "INFO_ONLY"
+        ),
+        None,
+    )
+
+
+def _navigation_ui_command(state, message, inferred_action):
+    """Prompt A 결과를 세 가지 기존 버튼 UI 동작으로 수렴시킨다."""
+    action = inferred_action.get("action") if isinstance(inferred_action, dict) else None
+    tasks = inferred_action.get("tasks") or [] if isinstance(inferred_action, dict) else []
+
+    if _is_profile_reset_candidate(message):
+        policy_id = (
+            state.get("_eligibility_policy_id")
+            or state.get("selected_policy_id")
+            or state.get("current_policy_id")
+            or state.get("focus_policy_id")
+        )
+        bundle = _eligibility_bundle(policy_id)
+        if not bundle:
+            return None
+        # Prompt A를 먼저 호출해 의미를 확인하되, '프로필' 재설정 문장이
+        # 파괴적인 RESET으로 잘못 분류되어 전체 세션이 지워지는 것은 금지한다.
+        if action == "CLARIFY":
+            return None
+        if "ELIGIBILITY" not in tasks and action not in {"RESET", None}:
+            return None
+        return {
+            "type": "RESET_PROFILE",
+            "policy_id": policy_id,
+            "fields": get_policy_needed_fields(bundle),
+        }
+
+    if _is_other_eligibility_candidate(message):
+        if action == "CLARIFY":
+            return None
+        if "ELIGIBILITY" in tasks or action == "SHOW_ALTERNATIVES":
+            return {"type": "START_ELIGIBILITY"}
+        return None
+
+    if _is_chat_reset_candidate(message) and action == "RESET":
+        return {"type": "RESET_CHAT"}
+    return None
 
 
 def public_state(state):
@@ -163,13 +323,22 @@ def public_state(state):
     }
 
 
+def _chat_response(state, response="", ui_command=None):
+    payload = {
+        "response": response,
+        "state": public_state(state),
+    }
+    if ui_command:
+        payload["ui_command"] = ui_command
+    return JSONResponse(payload)
+
+
 # === API 엔드포인트 ===
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """기존 두물청 상담 앱"""
-    with open("static/index.html", "r", encoding="utf-8") as f:
-        content = f.read()
+    content = _load_chat_html()
     return HTMLResponse(content=content, headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"})
 
 
@@ -184,8 +353,7 @@ async def landing_page():
 @app.get("/chat", response_class=HTMLResponse)
 async def chat_page():
     """두물청 상담 화면"""
-    with open("static/index.html", "r", encoding="utf-8") as f:
-        content = f.read()
+    content = _load_chat_html()
     return HTMLResponse(content=content, headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"})
 
 
@@ -197,56 +365,105 @@ async def chat(request: Request):
     message = str(body.get("message") or "")
     ui_event = body.get("ui_event")
     input_action = body.get("action")
+    profile_data = body.get("profile")
     lock = get_session_lock(session_id)
 
     async with lock:
         state = get_session(session_id)
 
-        # 정책 별칭이 포함된 자연어 문장은 alias→EXPLAIN shortcut이 먼저
-        # 확정하지 않도록 Prompt A에서 Action+Task를 한 번 의미적으로 판정한다.
-        # "월세"처럼 별칭 자체만 입력한 경우에는 기존 빠른 설명 경로를 유지한다.
-        if (
+        # 정책 별칭이 포함된 자연어와 세 가지 UI 전환 자연어는 Prompt A가
+        # Action+Task 의미를 먼저 판단한다. 코드는 그 결과를 버튼 동작으로 수렴시킨다.
+        should_probe_intent = (
             not ui_event
             and input_action is None
             and message.strip()
-            and resolve_policy_alias(message)
-            and not _is_bare_policy_alias_message(message)
             and get_guardrail_response(message) is None
-        ):
+            and (
+                (
+                    resolve_policy_alias(message)
+                    and not _is_bare_policy_alias_message(message)
+                )
+                or _is_navigation_prompt_candidate(message)
+            )
+        )
+        if should_probe_intent:
+            profile_before_probe = dict(state.get("profile") or {})
             analyze_user_turn(state, message)
             inferred_action = state.pop("_normalized_action", None)
+            # UI 전환 문장이 Profile 값을 바꾸는 일은 없어야 한다.
+            if _is_navigation_prompt_candidate(message):
+                state["profile"] = profile_before_probe
+                state["profile_status"] = get_profile_status(state["profile"])
+                ui_command = _navigation_ui_command(state, message, inferred_action)
+                _clear_intent_probe_artifacts(state)
+                if ui_command:
+                    if message.strip():
+                        state["messages"].append({"role": "user", "content": message.strip()})
+
+                    if ui_command["type"] == "RESET_CHAT":
+                        state.clear()
+                        state.update(get_default_state())
+                        response = "대화가 초기화되었어요. 정책 검색, 맞춤 추천, 자격 확인 중 무엇을 도와드릴까요?"
+                    elif ui_command["type"] == "START_ELIGIBILITY":
+                        # 자연어 '다른 자격 조회'도 버튼처럼 현재 자격 단위를 닫고
+                        # 새 정책 선택부터 시작한다. 공통 Profile 자체는 유지된다.
+                        reset_task_context(state)
+                        response = ""
+                    else:
+                        policy_id = ui_command["policy_id"]
+                        # 진행 중 추가질문/Workflow와 재설정 카드가 충돌하지 않게
+                        # 현재 자격 단위를 닫고 같은 정책만 다시 고정한다.
+                        reset_task_context(state, keep_interest=True)
+                        state["selected_policy_id"] = policy_id
+                        state["current_policy_id"] = policy_id
+                        state["focus_policy_id"] = policy_id
+                        state["_eligibility_policy_id"] = policy_id
+                        state["_eligibility_profile_fields"] = list(ui_command.get("fields") or [])
+                        response = "직전 정책의 자격을 다시 확인할 수 있도록 프로필을 수정해주세요."
+
+                    if response:
+                        state["messages"].append({"role": "assistant", "content": response})
+                    sessions[session_id] = state
+                    session_last_seen[session_id] = time.monotonic()
+                    return _chat_response(state, response, ui_command)
             if inferred_action:
                 input_action = inferred_action
 
-        # 정책 선택 카드/자격확인 버튼에서 새 자격조회를 시작하면, 세션에
-        # 기존 Profile 값이 있어도 추가 질문으로 바로 건너뛰지 않는다.
-        # 선택한 정책이 실제 판정에 사용하는 기본 필드만 다시 받게 해서
-        # 첫 조회와 다른 정책 조회 모두 Profile 카드 → 추가 질문 순서를 보장한다.
-        if isinstance(input_action, dict):
+        # 새 정책의 자격조회는 기존 공통 Profile 값을 기억하되 카드 자체는
+        # 항상 다시 확인한다. 필요한 필드를 잠시 비워 Workflow를 멈춘 뒤,
+        # 응답 직전에 원래 값을 복원하여 프론트 카드의 prefill로 사용한다.
+        eligibility_profile_snapshot = None
+        eligibility_needed_fields = []
+        if isinstance(input_action, dict) and not profile_data and not ui_event:
             action_kind = input_action.get("action")
             action_tasks = input_action.get("tasks") or []
-            target_policy = input_action.get("policy_id")
-            if (
-                action_kind == "NORMAL"
-                and "ELIGIBILITY" in action_tasks
+            target_policy = _resolve_action_policy_id(input_action, message)
+            is_new_eligibility_unit = (
+                "ELIGIBILITY" in action_tasks
                 and target_policy
-                and input_action.get("use_previous_context") is not True
-            ):
-                target_bundle = next(
-                    (bundle for bundle in bundles if bundle.get("policy_id") == target_policy),
-                    None,
+                and (
+                    action_kind in {"NORMAL", "SHOW_ALTERNATIVES"}
+                    or input_action.get("use_previous_context") is not True
                 )
+            )
+            if is_new_eligibility_unit:
+                target_bundle = _eligibility_bundle(target_policy)
                 if target_bundle:
-                    for field in get_policy_needed_fields(target_bundle):
+                    input_action = dict(input_action)
+                    input_action["policy_id"] = target_policy
+                    eligibility_needed_fields = get_policy_needed_fields(target_bundle)
+                    eligibility_profile_snapshot = {
+                        field: state.get("profile", {}).get(field)
+                        for field in eligibility_needed_fields
+                    }
+                    for field in eligibility_needed_fields:
                         if field in state.get("profile", {}):
                             state["profile"][field] = None
                     state["profile_status"] = get_profile_status(state["profile"])
-                    # 새로 시작하는 자격조회이므로 과거에 이 정책을 조회한 적이
-                    # 있더라도 추가 질문 답변은 이번 조회에서 다시 받는다.
+                    # 새 자격조회 단위는 그 정책의 과거 추가질문 답변을 재사용하지 않는다.
                     state.setdefault("policy_answers", {}).pop(target_policy, None)
 
         # Profile 업데이트가 있으면 handle_turn 전에 반드시 적용
-        profile_data = body.get("profile")
         if profile_data:
             update_profile(state, profile_data)
 
@@ -309,15 +526,13 @@ async def chat(request: Request):
                 "use_previous_context": True,
             }]
 
-        # 추천 시작 화면은 task를 실행하지 않고 깨끗한 상태만 반환한다.
+        # 추천 시작 화면은 task를 실행하지 않고 깨끗한 작업 상태만 반환한다.
+        # reset_task_context는 사용자 공통 Profile 자체는 지우지 않는다.
         if ui_event == "START_RECOMMEND_RESET":
             reset_task_context(state)
             sessions[session_id] = state
             session_last_seen[session_id] = time.monotonic()
-            return JSONResponse({
-                "response": "",
-                "state": public_state(state),
-            })
+            return _chat_response(state)
 
         if ui_event == "START_RECOMMEND":
             reset_task_context(state, keep_interest=True)
@@ -329,23 +544,36 @@ async def chat(request: Request):
             state["active_clarify"] = None
             state["_skip_profile_check"] = True
 
-        async with agent_slots:
-            state, response = await run_in_threadpool(
-                handle_turn,
-                state,
-                message,
-                collection,
-                bundles,
-                ui_event,
-                input_action,
-            )
+        try:
+            async with agent_slots:
+                state, response = await run_in_threadpool(
+                    handle_turn,
+                    state,
+                    message,
+                    collection,
+                    bundles,
+                    ui_event,
+                    input_action,
+                )
+        finally:
+            # 새 자격조회 시작 전에 잠시 비웠던 공통 Profile은 항상 복원한다.
+            # Workflow는 CLARIFY_PROFILE에서 멈춰 있으므로 사용자는 값을 확인/수정한 뒤 제출한다.
+            if eligibility_profile_snapshot is not None:
+                for field, value in eligibility_profile_snapshot.items():
+                    if field in state.get("profile", {}):
+                        state["profile"][field] = value
+                state["profile_status"] = get_profile_status(state["profile"])
+                if (
+                    state.get("active_clarify") == "CLARIFY_PROFILE"
+                    and "ELIGIBILITY" in state.get("pending_tasks", [])
+                ):
+                    # Agent의 3개 단위 배치 제한 대신 이 정책이 실제 사용하는
+                    # 기본 Profile 필드를 한 카드에 모두 보여준다.
+                    state["_missing_fields"] = list(eligibility_needed_fields)
+
         sessions[session_id] = state
         session_last_seen[session_id] = time.monotonic()
-
-        return JSONResponse({
-            "response": response,
-            "state": public_state(state),
-        })
+        return _chat_response(state, response)
 
 
 @app.post("/api/reset")
