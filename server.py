@@ -187,22 +187,19 @@ async def chat(request: Request):
     async with lock:
         state = get_session(session_id)
 
-        # 직전 자격조회에서 '다른 자격 조회하기'로 새 정책을 고르면 기존에
-        # 채워진 공통 Profile 때문에 추가 질문으로 바로 건너뛰지 않는다.
-        # 새 정책이 실제 판정에 사용하는 기본 필드만 다시 받게 해서,
-        # 정책 선택 → 정책 맞춤 Profile 카드 → 추가 질문 순서를 보장한다.
+        # 정책 선택 카드/자격확인 버튼에서 새 자격조회를 시작하면, 세션에
+        # 기존 Profile 값이 있어도 추가 질문으로 바로 건너뛰지 않는다.
+        # 선택한 정책이 실제 판정에 사용하는 기본 필드만 다시 받게 해서
+        # 첫 조회와 다른 정책 조회 모두 Profile 카드 → 추가 질문 순서를 보장한다.
         if isinstance(input_action, dict):
             action_kind = input_action.get("action")
             action_tasks = input_action.get("tasks") or []
             target_policy = input_action.get("policy_id")
-            previous_policy = state.get("current_policy_id") or state.get("focus_policy_id")
             if (
                 action_kind == "NORMAL"
                 and "ELIGIBILITY" in action_tasks
                 and target_policy
-                and state.get("last_task") == "ELIGIBILITY"
-                and previous_policy
-                and target_policy != previous_policy
+                and input_action.get("use_previous_context") is not True
             ):
                 target_bundle = next(
                     (bundle for bundle in bundles if bundle.get("policy_id") == target_policy),
@@ -213,8 +210,8 @@ async def chat(request: Request):
                         if field in state.get("profile", {}):
                             state["profile"][field] = None
                     state["profile_status"] = get_profile_status(state["profile"])
-                    # 새 정책의 자격을 다시 시작하는 흐름이므로 과거에 이 정책을
-                    # 조회한 적이 있더라도 추가 질문 답변은 이번 조회에서 다시 받는다.
+                    # 새로 시작하는 자격조회이므로 과거에 이 정책을 조회한 적이
+                    # 있더라도 추가 질문 답변은 이번 조회에서 다시 받는다.
                     state.setdefault("policy_answers", {}).pop(target_policy, None)
 
         # Profile 업데이트가 있으면 handle_turn 전에 반드시 적용
