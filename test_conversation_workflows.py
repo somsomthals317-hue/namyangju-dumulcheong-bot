@@ -246,12 +246,14 @@ class ConversationWorkflowRegressionTests(unittest.TestCase):
                 None,
                 BUNDLES,
             )
+        # 일반 대안/분야 전환은 즉시 추천을 실행하지 않고 저장된 Profile을
+        # prefill한 확인 카드에서 멈춘다. 카드 제출 후에만 새 결과가 생성된다.
         self.assertNotIn("찾지 못했어요", fallback_response)
-        self.assertTrue(fallback_state["last_result_policy_ids"])
-        by_id = {item["policy_id"]: item for item in BUNDLES}
-        for policy_id in fallback_state["last_result_policy_ids"]:
-            _, matched = agent._interest_match(by_id[policy_id], ["교육"])
-            self.assertNotIn("교육", matched)
+        self.assertEqual(fallback_state["active_clarify"], "CLARIFY_PROFILE")
+        self.assertEqual(fallback_state["pending_tasks"], ["RECOMMEND"])
+        self.assertEqual(fallback_state["last_result_policy_ids"], [])
+        self.assertEqual(fallback_state["interest_query"], "전체")
+        self.assertEqual(fallback_state.get("_exclude_topics"), ["교육"])
 
     def test_atomic_target_extraction_covers_mixed_task_orders(self):
         cases = [
