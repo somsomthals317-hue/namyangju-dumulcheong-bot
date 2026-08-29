@@ -116,6 +116,8 @@ TASK_TRANSIENT_KEYS = (
     "_exclude_topics",
     "_exclude_policy_ids",
     "_follow_up_field",
+    "_eligibility_policy_id",
+    "_eligibility_profile_fields",
 )
 
 
@@ -152,3 +154,4 @@ def save_policy_answer(state, policy_id, question_id, answer):
         state["policy_answers"][policy_id] = {}
     state["policy_answers"][policy_id][question_id] = answer
     return state
+
