@@ -171,7 +171,9 @@ def validate_action_payload(payload):
         action = "CLARIFY"
         clarify_reason = clarify_reason or "NO_TASK"
     topic_values = _clean_action_topics(payload.get("topic"))
-    topic = topic_values[0] if topic_values else None
+    # 추천은 복수 관심 분야를 독립 필터의 합집합으로 처리한다. 첫 항목만
+    # 남기면 UI에서 여러 분야를 선택해도 첫 분야 결과만 반환된다.
+    topic = ", ".join(topic_values) if topic_values else None
     exclude_topics = _clean_action_topics(payload.get("exclude_topics"))
     exclude_policy_mentions = payload.get("exclude_policy_mentions", [])
     if not isinstance(exclude_policy_mentions, list):
@@ -2517,6 +2519,42 @@ def run_recommend(state, bundles):
             item for item in fallback_candidates if not is_excluded(item)
         ]
         state["_last_recommendation_mode"] = "RULE_ALTERNATIVE_FALLBACK"
+
+    # 조건 없이 복수 분야를 선택한 경우에는 GPT의 전역 상위 결과만 쓰지
+    # 않는다. 각 분야 후보를 독립적으로 최대 3개씩 뽑아 합집합을 만들면
+    # 첫 분야의 정책이 상위권을 차지해 뒤 분야가 사라지는 현상을 막을 수 있다.
+    requested_interests = [
+        item.strip() for item in interest.split(",") if item.strip()
+    ]
+    if was_skip_mode and len(requested_interests) > 1:
+        balanced_results = []
+        balanced_ids = set()
+        for field in requested_interests:
+            ai_for_field = [
+                item for item in relevant_results
+                if field in item.get("matched_interests", []) and not is_excluded(item)
+            ]
+            fallback_for_field = [
+                item for item in fallback_candidates
+                if field in item.get("matched_interests", []) and not is_excluded(item)
+            ]
+            field_pool = sorted(
+                ai_for_field + fallback_for_field,
+                key=_recommendation_sort_key,
+                reverse=True,
+            )
+            field_count = 0
+            for item in field_pool:
+                if item["policy_id"] in balanced_ids:
+                    continue
+                balanced_results.append(item)
+                balanced_ids.add(item["policy_id"])
+                field_count += 1
+                if field_count >= 3:
+                    break
+        relevant_results = balanced_results
+        state["_last_recommendation_mode"] += "_BALANCED_MULTI_INTEREST"
+
     state["current_topic"] = interest
     state["last_result_policy_ids"] = [
         item["policy_id"] for item in relevant_results[:8]

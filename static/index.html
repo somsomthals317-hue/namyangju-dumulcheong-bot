@@ -830,6 +830,36 @@ function dispatchAction(action, displayText) {
     return sendMessage(displayText, action);
 }
 
+// 어떤 입력 경로로 API를 호출했든 동일한 State→카드 계약을 적용한다.
+// active_clarify가 있으면 말풍선만 표시하고 흐름을 끊지 않는다.
+function renderResponseWithCard(data) {
+    const st = data.state || {};
+    if (st.active_clarify === 'CLARIFY_PROFILE') {
+        const missing = st.missing_fields || [];
+        const pending = st.pending_tasks || [];
+        addBotMessage(data.response || "추가 정보가 필요해요.");
+        if (pending.includes('RECOMMEND')) {
+            showRecommendProfileCard();
+        } else {
+            showProfileCard(missing.length > 0 ? missing : undefined);
+        }
+    } else if (st.active_clarify === 'CLARIFY_PREFERENCE') {
+        addBotMessage(data.response || "어떤 분야에 관심이 있으세요?");
+        showInterestCardsInChat();
+    } else if (st.active_clarify === 'CLARIFY_POLICY') {
+        addBotMessage(data.response || "어떤 정책을 선택하시겠어요?");
+        showPolicyCardInChat(st.policy_candidates);
+    } else if (st.active_clarify === 'CLARIFY_ADDITIONAL') {
+        const aq = st.additional_question;
+        addBotMessage(data.response || "추가 자격 정보를 입력해주세요.");
+        if (aq && aq.questions && aq.questions.length > 0) {
+            showAdditionalQuestionCard(aq);
+        }
+    } else {
+        addBotMessage(data.response);
+    }
+}
+
 // === 메시지 전송: 자연어와 버튼은 같은 API/렌더링 경로 ===
 async function sendMessage(overrideText, actionPayload = null) {
     const input = document.getElementById('chatInput');
@@ -871,34 +901,8 @@ async function sendMessage(overrideText, actionPayload = null) {
             && st.pending_age_confirmation !== undefined;
         if (isAgeConfirmation) {
             addBotMessage(data.response);
-        } else if (st.active_clarify === 'CLARIFY_PROFILE') {
-            const missing = st.missing_fields || [];
-            if (missing.length > 0) {
-                // ELIGIBILITY: 필요한 필드만 표시
-                addBotMessage(data.response || "자격 확인을 위해 몇 가지만 확인할게요.");
-                showProfileCard(missing);
-            } else {
-                // RECOMMEND: 전체 프로필
-                addBotMessage(data.response || "맞춤 결과를 위해 프로필 정보가 필요해요!\n아래에서 입력해주세요.");
-                showRecommendProfileCard();
-            }
-        } else if (st.active_clarify === 'CLARIFY_PREFERENCE') {
-            addBotMessage("어떤 분야에 관심이 있으세요?");
-            showInterestCardsInChat();
-        } else if (st.active_clarify === 'CLARIFY_POLICY') {
-            addBotMessage(data.response);
-            showPolicyCardInChat(st.policy_candidates);
-        } else if (st.active_clarify === 'CLARIFY_ADDITIONAL') {
-            // 추가 질문 옵션 카드
-            const aq = st.additional_question;
-            if (aq && aq.questions && aq.questions.length > 0) {
-                addBotMessage(data.response);
-                showAdditionalQuestionCard(aq);
-            } else {
-                addBotMessage(data.response);
-            }
         } else {
-            addBotMessage(data.response);
+            renderResponseWithCard(data);
         }
     } catch(e) {
         hideTyping();
@@ -1011,21 +1015,7 @@ async function autoSubmitEligibilityCard(card) {
         if (typeof st.interest_query === 'string' && st.interest_query.trim()) {
             pendingInterest = st.interest_query.trim();
         }
-        if (st.active_clarify === 'CLARIFY_ADDITIONAL') {
-            const aq = st.additional_question;
-            if (aq && aq.questions) {
-                addBotMessage(data.response);
-                showAdditionalQuestionCard(aq);
-            } else {
-                addBotMessage(data.response);
-            }
-        } else if (st.active_clarify === 'CLARIFY_PROFILE') {
-            const missing = st.missing_fields || [];
-            addBotMessage("추가 정보가 필요해요.");
-            showProfileCard(missing.length > 0 ? missing : undefined);
-        } else {
-            addBotMessage(data.response);
-        }
+        renderResponseWithCard(data);
     } catch(e) { hideTyping(); addBotMessage("오류가 발생했어요."); }
     isWaiting = false;
     document.getElementById('sendBtn').disabled = false;
@@ -1151,21 +1141,7 @@ async function submitProfileCard(btn) {
             hideTyping();
             const st = data.state || {};
             if (st.profile) serverProfile = st.profile;
-            if (st.active_clarify === 'CLARIFY_ADDITIONAL') {
-                const aq = st.additional_question;
-                if (aq && aq.questions) {
-                    addBotMessage(data.response);
-                    showAdditionalQuestionCard(aq);
-                } else {
-                    addBotMessage(data.response);
-                }
-            } else if (st.active_clarify === 'CLARIFY_PROFILE') {
-                const missing = st.missing_fields || [];
-                addBotMessage("추가 정보가 필요해요.");
-                showProfileCard(missing.length > 0 ? missing : undefined);
-            } else {
-                addBotMessage(data.response);
-            }
+            renderResponseWithCard(data);
         } catch(e) { hideTyping(); addBotMessage("오류가 발생했어요."); }
         isWaiting = false;
         document.getElementById('sendBtn').disabled = false;
@@ -1216,15 +1192,7 @@ async function postProfileAndRecommend(profile, skip) {
         if (typeof st.interest_query === 'string' && st.interest_query.trim()) {
             pendingInterest = st.interest_query.trim();
         }
-        if (st.active_clarify === 'CLARIFY_PROFILE') {
-            addBotMessage("추가 정보가 필요해요! 아래에서 입력해주세요.");
-            showProfileCard();
-        } else if (st.active_clarify === 'CLARIFY_PREFERENCE') {
-            addBotMessage("어떤 분야에 관심이 있으세요?");
-            showInterestCardsInChat();
-        } else {
-            addBotMessage(data.response);
-        }
+        renderResponseWithCard(data);
     } catch(e) { hideTyping(); addBotMessage("오류가 발생했어요."); }
     isWaiting = false;
     document.getElementById('sendBtn').disabled = false;
@@ -1410,12 +1378,7 @@ async function editAdditionalAnswers(policyId, btn) {
             }),
         });
         const data = await res.json();
-        const st = data.state || {};
-        addBotMessage(data.response);
-        if (st.active_clarify === 'CLARIFY_ADDITIONAL') {
-            const aq = st.additional_question;
-            if (aq && aq.questions) showAdditionalQuestionCard(aq);
-        }
+        renderResponseWithCard(data);
     } catch (e) {
         addBotMessage(
             e && e.name === 'AbortError'
