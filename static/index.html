@@ -843,7 +843,6 @@ function renderResponseWithCard(data) {
     if (st.profile) serverProfile = st.profile;
 
     if (command && command.type) {
-        // sendMessage가 응답 렌더링 중일 때도 퀵 버튼 함수를 즉시 실행할 수 있게 한다.
         isWaiting = false;
         document.getElementById('sendBtn').disabled = false;
         if (command.type === 'START_EXPLAIN') { startExplain(); return; }
