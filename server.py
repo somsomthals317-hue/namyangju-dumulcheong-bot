@@ -26,7 +26,10 @@ from state import (
     get_default_state, get_policy_needed_fields, get_profile_status,
     reset_task_context, update_profile,
 )
-from agent import configure_openai, handle_turn
+from agent import (
+    POLICY_QUERY_ALIASES, analyze_user_turn, configure_openai,
+    get_guardrail_response, handle_turn, resolve_policy_alias,
+)
 
 # === 앱 초기화 ===
 app = FastAPI(title="두물청 API")
@@ -125,6 +128,18 @@ def get_session_lock(session_id):
     return lock
 
 
+def _is_bare_policy_alias_message(message):
+    """별칭 자체만 입력한 짧은 검색은 기존 빠른 EXPLAIN 경로를 유지한다."""
+    compact = re.sub(r"[^0-9a-z가-힣]", "", str(message or "").lower())
+    if not compact:
+        return False
+    return any(
+        compact == re.sub(r"[^0-9a-z가-힣]", "", alias.lower())
+        for aliases, _ in POLICY_QUERY_ALIASES
+        for alias in aliases
+    )
+
+
 def public_state(state):
     return {
         "focus_policy_id": state.get("focus_policy_id"),
@@ -186,6 +201,22 @@ async def chat(request: Request):
 
     async with lock:
         state = get_session(session_id)
+
+        # 정책 별칭이 포함된 자연어 문장은 alias→EXPLAIN shortcut이 먼저
+        # 확정하지 않도록 Prompt A에서 Action+Task를 한 번 의미적으로 판정한다.
+        # "월세"처럼 별칭 자체만 입력한 경우에는 기존 빠른 설명 경로를 유지한다.
+        if (
+            not ui_event
+            and input_action is None
+            and message.strip()
+            and resolve_policy_alias(message)
+            and not _is_bare_policy_alias_message(message)
+            and get_guardrail_response(message) is None
+        ):
+            analyze_user_turn(state, message)
+            inferred_action = state.pop("_normalized_action", None)
+            if inferred_action:
+                input_action = inferred_action
 
         # 정책 선택 카드/자격확인 버튼에서 새 자격조회를 시작하면, 세션에
         # 기존 Profile 값이 있어도 추가 질문으로 바로 건너뛰지 않는다.
