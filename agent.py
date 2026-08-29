@@ -1449,7 +1449,7 @@ def _normalize_profile_patch(raw_patch):
     aliases = {
         "네": "예", "아니요": "아니오", "거주": "예", "비거주": "아니오",
         "재직": "취업", "구직": "미취업", "취준": "미취업",
-        "학생 아님": "해당하지 않음", "비학생": "해당하지 않음", "아니오": "해당하지 않음",
+        "학생 아님": "해당하지 않음", "비학생": "해당하지 않음",
         "예비창업": "창업 준비 중", "미창업": "창업하지 않음",
         "자가": "주택 소유", "유주택": "주택 소유", "기혼자": "기혼", "미혼자": "미혼",
     }
@@ -1457,7 +1457,10 @@ def _normalize_profile_patch(raw_patch):
         value = raw_patch.get(key)
         if value is None:
             continue
-        value = aliases.get(str(value).strip(), str(value).strip())
+        raw_value = str(value).strip()
+        if key == "student" and raw_value == "아니오":
+            raw_value = "해당하지 않음"
+        value = aliases.get(raw_value, raw_value)
         if value in allowed:
             normalized[key] = value
     return normalized
