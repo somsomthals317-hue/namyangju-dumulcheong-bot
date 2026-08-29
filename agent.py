@@ -232,7 +232,14 @@ def detect_navigation_action(state, message, bundles):
 
     # "청년꽃간 자격조회하자", "월세 자격 확인해줘"처럼 현재 발화에
     # 정책 대상과 자격 의도가 함께 있으면 직전 focus보다 이 정책을 우선한다.
-    if exact_policy and _is_explicit_eligibility_request(msg):
+    if (
+        exact_policy
+        and _is_explicit_eligibility_request(msg)
+        # 설명+자격, 추천+자격처럼 한 발화에 여러 Task가 있으면
+        # 단일 자격 shortcut으로 가로채지 않고 atomic workflow에 맡긴다.
+        and not re.search(r"설명|알려|내용|뭐야", msg)
+        and not _is_explicit_recommend_request(msg)
+    ):
         explicit_policy_id = resolve_policy_alias(msg) or _explicit_policy_id_from_name(msg)
         if explicit_policy_id:
             return validate_action_payload({

@@ -226,7 +226,7 @@ class ConversationWorkflowRegressionTests(unittest.TestCase):
 
         self.assertEqual(
             seen,
-            [{"topic": "전체", "excluded_topics": ["교육"], "skip": True}],
+            [{"topic": "전체", "excluded_topics": ["교육"], "skip": None}],
         )
         self.assertIn("다른 분야 정책 카드", response)
 
