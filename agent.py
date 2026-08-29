@@ -426,6 +426,29 @@ def detect_navigation_action(state, message, bundles):
             "confidence": "high",
         })
 
+    # "남양주 살아 취업 추천해줘"처럼 Profile 정보와 새 추천 요청이 한 문장에
+    # 함께 있어도 진행 중 자격/추가질문의 답변으로 흡수하지 않는다.
+    if (
+        mentioned_topics
+        and not exact_policy
+        # 설명+추천 / 자격+추천은 단일 추천 shortcut이 아니라 multi-task workflow가 처리한다.
+        and not re.search(r"설명|알려|내용|뭐야|자격|가능한지|되는지", msg)
+        and (
+            _is_explicit_recommend_request(msg)
+            or re.search(r"(?:바꿔|바꾸|변경|전환)(?:줘|해줘|할래)?", msg)
+        )
+    ):
+        topic = ", ".join(mentioned_topics)
+        current_topics = _clean_action_topics(current_topic) if current_topic else []
+        action = "CHANGE_TOPIC" if current_topics and any(t not in current_topics for t in mentioned_topics) else "NORMAL"
+        return validate_action_payload({
+            "action": action,
+            "tasks": ["RECOMMEND"],
+            "topic": topic,
+            "use_previous_context": False,
+            "confidence": "high",
+        })
+
     # "취업 정책은?"처럼 현재 발화의 새 분야를 과거 주제보다 우선한다.
     if mentioned_topics and not exact_policy and re.search(
         r"정책\s*(?:은|는|있|알려|보여|찾아)|(?:쪽|분야)\s*(?:은|는|정책)",
@@ -1655,6 +1678,12 @@ def handle_clarify_answer(state, user_message, collection, bundles):
         state["current_policy_id"] = policy_id
 
     elif clarify_type == "CLARIFY_PROFILE":
+        if re.fullmatch(r"\s*(?:나(?:는|도)?\s*)?학생(?:이야|이에요|입니다)?[.!?]?\s*", user_message or ""):
+            state["active_clarify"] = "CLARIFY_PROFILE"
+            return (
+                "학생 유형을 조금 더 구체적으로 알려주세요. "
+                "고등학생, 대학생, 대학원생, 해당하지 않음 중에서 선택해주세요."
+            )
         if (
             "프로필 입력 완료" in user_message
             or "프로필 설정 완료" in user_message
@@ -2505,13 +2534,17 @@ def run_recommend(state, bundles):
     results = build_grounded_recommendations(
         bundles, ranking_profile, ranking_answers, interest
     )
-    matched_results = results if interest == "전체" else [r for r in results if r["relevance"] >= 0.35]
+    # 관심 분야는 추천의 hard gate다. GPT는 이 집합 안에서만 의미 적합성과
+    # 순위를 판단하며 다른 분야 정책을 새로 끼워 넣을 수 없다. 복수 분야는
+    # 선택한 분야 중 하나 이상과 공식 recommendation_interests가 맞으면 포함한다.
+    matched_results = results if interest == "전체" else [
+        r for r in results if r.get("matched_interests")
+    ]
 
-    # 명확한 자격 FAIL은 추천 후보에서 제외한다. 그 외에는 코드 키워드가
-    # 놓친 정책까지 GPT가 의미적으로 판단할 수 있도록 전체 정책을 전달한다.
-    # GPT 장애/형식 오류 때만 결정론적 키워드 후보로 안전하게 복구한다.
+    # 명확한 자격 FAIL은 추천 후보에서 제외한다. GPT 장애/형식 오류 때도
+    # 동일한 분야 hard gate 안의 결정론적 후보로만 복구한다.
     hard_fail_results = [r for r in matched_results if r.get("eligibility_status") == "FAIL"]
-    ai_candidates = [r for r in results if r.get("eligibility_status") != "FAIL"]
+    ai_candidates = [r for r in matched_results if r.get("eligibility_status") != "FAIL"]
     fallback_candidates = [r for r in matched_results if r.get("eligibility_status") != "FAIL"]
     semantic_query = state.pop("_recommend_query", None) or interest
     ai_results = rerank_recommendations_with_ai(

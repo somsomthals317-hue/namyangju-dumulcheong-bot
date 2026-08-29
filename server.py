@@ -162,14 +162,19 @@ def _is_bare_policy_alias_message(message):
 
 def _simple_menu_type(message):
     compact = re.sub(r"[^0-9a-z가-힣]", "", str(message or "").lower())
+    # 문장 전체가 메뉴 명령으로만 구성될 때만 여기서 확정한다.
+    # 정책명/분야/조건이 붙은 구체 요청은 아래 Prompt A/Agent가 의미를 판단한다.
     explain = {
-        "정책알아보자", "정책알아보기", "정책찾아보자", "정책좀보자", "청년정책알아보자",
+        "정책", "정책보기", "정책알아보자", "정책알아보기", "정책찾아보자", "정책좀보자",
+        "청년정책", "청년정책보기", "청년정책알아보자",
     }
     recommend = {
-        "맞춤추천하자", "맞춤추천해보자", "맞춤추천받자", "맞춤추천받기", "추천받자",
+        "맞춤추천", "맞춤추천하자", "맞춤추천해보자", "맞춤추천받자", "맞춤추천받기",
+        "추천", "추천하자", "추천받자", "추천받기",
     }
     eligibility = {
-        "자격조회하자", "자격조회해보자", "자격확인하자", "자격확인해보자", "자격확인하기",
+        "자격조회", "자격조회하자", "자격조회해보자", "자격조회해줘",
+        "자격확인", "자격확인하자", "자격확인해보자", "자격확인해줘", "자격확인하기",
     }
     if compact in explain:
         return "START_EXPLAIN"
@@ -369,7 +374,23 @@ async def chat(request: Request):
     async with lock:
         state = get_session(session_id)
 
-        # 정책 별칭이 포함된 자연어와 세 가지 UI 전환 자연어는 Prompt A가
+        # 0. Bare Menu Command Layer
+        # "자격조회"와 "자격조회하자"처럼 의미가 완전히 같은 메뉴 명령은
+        # GPT 변동성을 허용하지 않고 하단 버튼과 동일한 ui_command로 즉시 수렴한다.
+        # exact compact match이므로 "청년월세 자격조회" 같은 구체 요청은 절대 잡지 않는다.
+        simple_menu_type = (
+            _simple_menu_type(message)
+            if not ui_event and input_action is None and message.strip()
+            else None
+        )
+        if simple_menu_type:
+            reset_task_context(state)
+            state["messages"].append({"role": "user", "content": message.strip()})
+            sessions[session_id] = state
+            session_last_seen[session_id] = time.monotonic()
+            return _chat_response(state, "", {"type": simple_menu_type})
+
+        # 정책 별칭이 포함된 자연어와 나머지 UI 전환 자연어는 Prompt A가
         # Action+Task 의미를 먼저 판단한다. 코드는 그 결과를 버튼 동작으로 수렴시킨다.
         should_probe_intent = (
             not ui_event
