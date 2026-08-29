@@ -105,6 +105,26 @@ class FinalRoutingRegressionTests(unittest.TestCase):
         self.assertIn("고등학생", response)
         self.assertIn("대학생", response)
 
+    def test_explain_and_eligibility_sentence_never_turns_into_recommendation(self):
+        state = get_default_state()
+        wrong_model = {
+            "action": "NORMAL", "turn_kind": "NEW_TASK", "reuse_focus": False,
+            "use_previous_context": False, "confidence": "high",
+            "tasks": ["RECOMMEND"], "topic": "복지", "policy_mention": None,
+            "workflow": [{"action": "NORMAL", "task": "RECOMMEND", "topic": "복지"}],
+            "profile_patch": {}, "clarify_reasons": [],
+        }
+        import json
+        seen = []
+        with patch.object(agent, "call_openai", return_value=json.dumps(wrong_model, ensure_ascii=False)), \
+             patch.object(agent, "run_explain", side_effect=lambda s, q, c: seen.append("EXPLAIN") or "설명"), \
+             patch.object(agent, "run_eligibility", side_effect=lambda s, b: seen.append("ELIGIBILITY") or "자격"):
+            next_state, response = agent.handle_turn(
+                state, "입영지원금 설명해주고 내가 자격되는지도 확인해줘", None, BUNDLES
+            )
+        self.assertEqual(seen, ["EXPLAIN", "ELIGIBILITY"])
+        self.assertNotIn("RECOMMEND", next_state.get("last_tasks", []))
+
     def test_bare_menu_variants_are_defined_as_same_front_door(self):
         text = open("server.py", encoding="utf-8").read()
         for token in ["자격조회", "자격조회하자", "자격확인", "자격확인하자"]:
