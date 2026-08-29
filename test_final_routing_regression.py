@@ -126,17 +126,19 @@ class FinalRoutingRegressionTests(unittest.TestCase):
         self.assertNotIn("RECOMMEND", next_state.get("last_tasks", []))
 
     def test_bare_menu_variants_are_defined_as_same_front_door(self):
-        text = open("server.py", encoding="utf-8").read()
+        from pathlib import Path
+        text = Path("server.py").read_text(encoding="utf-8")
         for token in ["자격조회", "자격조회하자", "자격확인", "자격확인하자"]:
             self.assertIn(f'"{token}"', text)
         for token in ["정책보기", "정책알아보자", "맞춤추천", "맞춤추천하자"]:
             self.assertIn(f'"{token}"', text)
         # Bare menu는 Prompt A보다 먼저 deterministic ui_command로 빠져야 한다.
-        self.assertLess(text.index("simple_menu_type = _simple_menu_type(message)"), text.index("should_probe_intent = ("))
+        self.assertLess(text.index("simple_menu_type = ("), text.index("should_probe_intent = ("))
 
     def test_named_policy_request_is_not_bare_menu(self):
         # 단순 명령 집합은 exact compact match만 사용해야 정책명이 붙은 문장을 가로채지 않는다.
-        text = open("server.py", encoding="utf-8").read()
+        from pathlib import Path
+        text = Path("server.py").read_text(encoding="utf-8")
         self.assertIn("if compact in eligibility", text)
         self.assertNotIn('"청년월세지원사업자격조회"', text)
 

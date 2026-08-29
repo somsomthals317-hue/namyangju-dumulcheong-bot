@@ -428,9 +428,15 @@ def detect_navigation_action(state, message, bundles):
 
     # "남양주 살아 취업 추천해줘"처럼 Profile 정보와 새 추천 요청이 한 문장에
     # 함께 있어도 진행 중 자격/추가질문의 답변으로 흡수하지 않는다.
-    if mentioned_topics and not exact_policy and (
-        _is_explicit_recommend_request(msg)
-        or re.search(r"(?:바꿔|바꾸|변경|전환)(?:줘|해줘|할래)?", msg)
+    if (
+        mentioned_topics
+        and not exact_policy
+        # 설명+추천 / 자격+추천은 단일 추천 shortcut이 아니라 multi-task workflow가 처리한다.
+        and not re.search(r"설명|알려|내용|뭐야|자격|가능한지|되는지", msg)
+        and (
+            _is_explicit_recommend_request(msg)
+            or re.search(r"(?:바꿔|바꾸|변경|전환)(?:줘|해줘|할래)?", msg)
+        )
     ):
         topic = ", ".join(mentioned_topics)
         current_topics = _clean_action_topics(current_topic) if current_topic else []
