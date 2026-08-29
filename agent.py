@@ -2882,12 +2882,10 @@ def format_explore_response(results, interest=""):
     lines.append("프로필을 입력하지 않으셨으니 개인 자격 판정 없이 관련 정책 개요만 안내해드려요.\n")
     
     if multi_interest:
-        shown_ids = set()
         for field in interests:
             field_results = [
                 item for item in results
                 if field in item.get("matched_interests", [])
-                and item["policy_id"] not in shown_ids
             ]
             field_results.sort(key=_recommendation_sort_key, reverse=True)
             field_results = field_results[:3]
@@ -2900,7 +2898,6 @@ def format_explore_response(results, interest=""):
                 )
                 continue
             for i, item in enumerate(field_results, 1):
-                shown_ids.add(item["policy_id"])
                 lines.append(f"{i}. {item['policy_name']}")
                 if item.get("recommendation_reason"):
                     lines.append(f"   {item['recommendation_reason']}")
@@ -2950,18 +2947,17 @@ def format_recommend_response(
     interests = [i.strip() for i in interest.split(",")] if interest else ["전체"]
     
     if len(interests) > 1:
-        # 분야별로 그룹핑 (중복 제거: 이미 표시한 policy_id는 스킵)
-        shown_ids = set()
+        # 분야별로 독립 그룹핑한다. 하나의 정책이 복지와 기본소득처럼 여러
+        # 분야에 속하면 각 분야에서 모두 보여야 사용자가 선택한 분야가
+        # 누락되지 않는다.
         for field in interests:
             field_pass = [
                 p for p in pass_list
                 if (field in p.get("matched_interests", []) or field in p.get("recommendation_reason", ""))
-                and p["policy_id"] not in shown_ids
             ]
             field_unknown = [
                 u for u in unknown_list
                 if (field in u.get("matched_interests", []) or field in u.get("recommendation_reason", ""))
-                and u["policy_id"] not in shown_ids
             ]
             
             lines.append(f"\n📌 [{field}] 분야\n")
@@ -2969,7 +2965,6 @@ def format_recommend_response(
             if field_pass:
                 lines.append(f"  ✅ 신청 가능성 높은 정책 {len(field_pass)}개")
                 for i, p in enumerate(field_pass, 1):
-                    shown_ids.add(p["policy_id"])
                     lines.append(f"  {i}. {p['policy_name']}")
                     lines.append(f"     추천이유: {p.get('recommendation_reason', '')}")
                     if p.get('application_period'):
@@ -2982,7 +2977,6 @@ def format_recommend_response(
             if field_unknown:
                 lines.append(f"  🔍 추가 확인 필요 {len(field_unknown)}개")
                 for i, u in enumerate(field_unknown, 1):
-                    shown_ids.add(u["policy_id"])
                     lines.append(f"  {i}. {u['policy_name']}")
                     lines.append(f"     추천이유: {u.get('recommendation_reason', '')}")
                     link = _official_policy_link(u.get("source"), "     ")
@@ -3010,8 +3004,7 @@ def format_recommend_response(
                     )
                 else:
                     lines.append(
-                        "  현재 보유한 정책 자료에서 이 분야로 연결된 새 후보를 찾지 못했어요. "
-                        "앞 분야에 같은 정책이 이미 표시된 경우도 중복해서 보여주지 않아요.\n"
+                        "  현재 보유한 정책 자료에서 이 분야로 연결된 후보를 찾지 못했어요.\n"
                     )
     else:
         # 단일 분야
