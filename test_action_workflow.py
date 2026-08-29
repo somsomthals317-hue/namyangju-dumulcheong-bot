@@ -260,6 +260,16 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("explore_without_profile: true", html)
         self.assertIn("actionPayload ? { action: actionPayload }", html)
 
+    def test_profile_reset_resumes_same_policy_and_other_lookup_is_separate(self):
+        with open("static/index.html", encoding="utf-8") as handle:
+            html = handle.read()
+        self.assertIn("profileResumePolicyId ? {", html)
+        self.assertIn("policy_id: profileResumePolicyId", html)
+        self.assertIn("tasks: ['ELIGIBILITY']", html)
+        self.assertIn("resetAndShowFullCard('${id}', this)", html)
+        self.assertIn("onclick=\"startEligibility()\"", html)
+
 
 if __name__ == "__main__":
     unittest.main()
+
