@@ -819,8 +819,9 @@ function checkEligibility(policyId, policyName) {
 function showAlternatives() {
     return dispatchAction({
         action: 'SHOW_ALTERNATIVES',
-        tasks: ['RECOMMEND'],
-        use_previous_context: true,
+        // 추천을 즉시 다시 실행하지 않고 정책 알아보기와 같은 선택 카드로 전환한다.
+        tasks: ['EXPLAIN'],
+        use_previous_context: false,
         confidence: 'high',
     }, '다른 정책 보기');
 }
