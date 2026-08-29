@@ -682,6 +682,18 @@ def resume_after_age_update(state, age, collection, bundles, profile_text=None):
     return f"만 나이 {age}세로 저장했어요. 정책 설명, 맞춤 추천, 자격 확인 중 무엇을 도와드릴까요?"
 
 
+def _active_workflow_task(state):
+    """현재 중단된 Workflow가 수행 중인 Task를 안전하게 반환한다."""
+    workflow = state.get("active_workflow")
+    if not isinstance(workflow, dict):
+        return None
+    index = workflow.get("index", 0)
+    steps = workflow.get("steps") or []
+    if not isinstance(index, int) or index < 0 or index >= len(steps):
+        return None
+    return steps[index].get("task")
+
+
 def handle_turn(state, user_message, collection, bundles, ui_event=None, input_action=None):
     """
     메인 턴 처리 함수
@@ -690,6 +702,35 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None, input_a
     # 메시지 기록
     if user_message and user_message.strip():
         state["messages"].append({"role": "user", "content": user_message.strip()})
+
+    # 자격 확인 Profile에서 남양주시 비거주를 선택하면 현재 정책 판정을
+    # 중단하고, 새로 자격을 확인할 정책을 고르는 카드로 전환한다.
+    if (
+        ui_event == "SUBMIT_PROFILE"
+        and state.get("profile", {}).get("residency") == "아니오"
+        and _active_workflow_task(state) == "ELIGIBILITY"
+    ):
+        state["profile"]["residency"] = None
+        state["profile_status"] = "INCOMPLETE"
+        reset_task_context(state, keep_interest=True)
+        state["_intent_workflow"] = [{
+            "action": "NORMAL",
+            "task": "ELIGIBILITY",
+            "policy_id": None,
+            "policy_mention": None,
+            "use_previous_context": False,
+        }]
+        start_active_workflow(
+            state,
+            ["ELIGIBILITY"],
+            "다른 정책 자격 확인",
+            bundles=bundles,
+            clarify_reasons=["CLARIFY_POLICY"],
+        )
+        question = execute_active_workflow(state, collection, bundles)
+        response = f"남양주시 거주자가 아닙니다.\n{question}"
+        state["messages"].append({"role": "assistant", "content": response})
+        return state, response
 
     if not ui_event:
         guarded = get_guardrail_response(user_message)
