@@ -61,6 +61,54 @@ class NaturalIntentRegressionTests(unittest.TestCase):
         self.assertNotIn("지원내용:", response)
         self.assertNotIn("[정책 설명]", response)
 
+    def test_named_horse_policy_overrides_stale_exam_fee_focus(self):
+        state = get_default_state()
+        state.update({
+            "focus_policy_id": "NYJ-YOUTH-004",
+            "selected_policy_id": "NYJ-YOUTH-004",
+            "_policy_mention": "경기청년 역량강화 기회지원사업(응시료지원)",
+        })
+
+        # Prompt A가 이전 정책을 반환해도 현재 발화의 명시 정책이 우선한다.
+        with patch.object(agent, "analyze_user_turn", return_value=(["ELIGIBILITY"], [])):
+            next_state, response = agent.handle_turn(
+                state,
+                "나 말산업 자격되는지 확인해줘",
+                None,
+                self.bundles,
+            )
+
+        self.assertEqual("NYJ-YOUTH-006", next_state["selected_policy_id"])
+        self.assertEqual("NYJ-YOUTH-006", next_state["focus_policy_id"])
+        self.assertIn("말산업 청년인턴취업지원", response)
+        self.assertNotIn("경기청년 역량강화", response)
+
+    def test_failed_horse_policy_keeps_full_policy_profile_contract(self):
+        state = get_default_state()
+        state["profile"].update({
+            "age": 24,
+            "residency": "예",
+            "employment": "취업",
+        })
+        state["selected_policy_id"] = "NYJ-YOUTH-006"
+        state["focus_policy_id"] = "NYJ-YOUTH-006"
+
+        response = agent.run_eligibility(state, self.bundles)
+
+        self.assertEqual(
+            ["age", "residency", "employment"],
+            state["_eligibility_profile_fields"],
+        )
+        self.assertIn(
+            "[ACTION_BTN:RESET_PROFILE:NYJ-YOUTH-006:프로필 다시 설정하기]",
+            response,
+        )
+        self.assertIn(
+            "[ACTION_BTN:NORMAL_ELIGIBILITY:다른 자격 조회하기]",
+            response,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
+
