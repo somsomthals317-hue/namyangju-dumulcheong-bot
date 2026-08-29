@@ -294,6 +294,10 @@ def detect_navigation_action(state, message, bundles):
         })
     if (
         current_policy_id
+        # 현재 발화에 새 정책명/별칭이 있으면 직전 정책의
+        # 후속 질문이 아니다. Prompt A가 새 대상의 Action을 판단하게
+        # 넘겨 stale current_policy_id가 자격 조회를 덮어쓰지 못하게 한다.
+        and not exact_policy
         and re.search(
             r"신청\s*조건|자격|가능한지|신청\s*(?:할\s*)?수|지원\s*(?:받을\s*)?수",
             msg,
@@ -1105,15 +1109,23 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None, input_a
             if not state.get("_policy_mention") and not _has_focus_reference(user_message):
                 state["focus_policy_id"] = None
                 state["selected_policy_id"] = None
-            # GPT가 축약 정책명을 놓쳐도 공식 별칭 사전으로 대상 정책을 확정한다.
-            if not state.get("_policy_mention"):
-                alias_policy_id = resolve_policy_alias(user_message)
-                alias_bundle = next(
-                    (bundle for bundle in bundles if bundle["policy_id"] == alias_policy_id),
-                    None,
-                )
-                if alias_bundle:
-                    state["_policy_mention"] = alias_bundle["policy_name"]
+            # Prompt A가 이전 focus를 잘못 재사용해도 현재 발화에 명시된 공식
+            # 정책 대상은 항상 우선한다. 이 검증은 Task 의미를 하드코딩하는
+            # 규칙이 아니라 GPT가 선택한 ELIGIBILITY의 대상을 정책 ID로
+            # 정규화하는 결정론적 entity validation이다.
+            explicit_policy_id = (
+                _explicit_policy_id_from_name(user_message)
+                or resolve_policy_alias(user_message)
+            )
+            explicit_bundle = next(
+                (bundle for bundle in bundles if bundle["policy_id"] == explicit_policy_id),
+                None,
+            )
+            if explicit_bundle:
+                state["_policy_mention"] = explicit_bundle["policy_name"]
+                if state.get("focus_policy_id") != explicit_policy_id:
+                    state["focus_policy_id"] = None
+                    state["selected_policy_id"] = None
             if any(ref in user_message for ref in ["나도 가능", "저도 가능", "내가 가능", "나도 되", "저도 되", "이 정책 가능", "그 정책 가능"]):
                 state["_policy_mention"] = user_message
             for suffix in [
@@ -1133,10 +1145,16 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None, input_a
                 # Task만 ELIGIBILITY로 보정하고 모델이 만든 EXPLAIN Workflow를
                 # 남겨두면 실행 단계에서 다시 설명으로 되돌아간다. Action+Task
                 # 원자 단위도 같은 대상의 자격 확인으로 함께 교체한다.
-                focus_reference = _has_focus_reference(user_message)
+                # 현재 발화에서 새 정책 ID를 확정했다면 과거 정책의
+                # FOLLOW_UP으로 절대 되돌리지 않는다. policy_id를 Workflow에
+                # 직접 넣어 이후 State 정규화에서도 대상을 보존한다.
+                focus_reference = (
+                    not explicit_policy_id and _has_focus_reference(user_message)
+                )
                 state["_intent_workflow"] = [{
                     "action": "FOLLOW_UP" if focus_reference else "NORMAL",
                     "task": "ELIGIBILITY",
+                    "policy_id": explicit_policy_id,
                     "policy_mention": None if focus_reference else state.get("_policy_mention"),
                     "topic": None,
                     "use_previous_context": focus_reference,
@@ -3157,6 +3175,10 @@ def run_eligibility(state, bundles):
     
     # 필요한 Profile 필드 확인
     needed_fields = get_policy_needed_fields(bundle)
+    # 결과 화면의 '프로필 다시 설정하기'가 누락 필드만이 아니라 이 정책에서
+    # 실제 비교하는 기본 조건 전체를 다시 편집할 수 있도록 보존한다.
+    state["_eligibility_policy_id"] = policy_id
+    state["_eligibility_profile_fields"] = list(needed_fields)
     profile = state["profile"]
     missing_needed = [f for f in needed_fields if f in profile and profile[f] is None]
     
@@ -3228,7 +3250,11 @@ def run_eligibility(state, bundles):
         link = _official_policy_link(bundle.get("source"))
         if link:
             result_text += f"\n{link}\n"
-        result_text += "\n[ACTION_BTN:RESET_PROFILE:프로필 다시 설정하기]\n[ACTION_BTN:RESET_CHAT:대화 초기화하기]"
+        result_text += (
+            f"\n[ACTION_BTN:RESET_PROFILE:{policy_id}:프로필 다시 설정하기]"
+            "\n[ACTION_BTN:NORMAL_ELIGIBILITY:다른 자격 조회하기]"
+            "\n[ACTION_BTN:RESET_CHAT:대화 초기화하기]"
+        )
         return result_text
     
     # additional_questions 중 아직 답변 안 된 것 확인
@@ -3538,7 +3564,13 @@ def format_eligibility_response(
     
     # FAIL 또는 UNKNOWN이면 액션 버튼 추가
     if status in ("FAIL", "UNKNOWN"):
-        lines.append("\n[ACTION_BTN:RESET_PROFILE:프로필 다시 설정하기]")
+        if policy_id:
+            lines.append(
+                f"\n[ACTION_BTN:RESET_PROFILE:{policy_id}:프로필 다시 설정하기]"
+            )
+        else:
+            lines.append("\n[ACTION_BTN:RESET_PROFILE:프로필 다시 설정하기]")
+        lines.append("[ACTION_BTN:NORMAL_ELIGIBILITY:다른 자격 조회하기]")
         lines.append("[ACTION_BTN:RESET_CHAT:대화 초기화하기]")
     
     return "\n".join(lines)
@@ -4129,3 +4161,4 @@ def compose_multi_response(task_results, steps=None, bundles=None):
         parts.append(f"[{labels[task]}]\n{intro}\n\n{task_results[task]}".strip())
     
     return "\n\n---\n\n".join(parts)
+

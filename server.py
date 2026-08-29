@@ -136,6 +136,8 @@ def public_state(state):
         "interest_query": state.get("interest_query"),
         "recommendation_mode": state.get("_last_recommendation_mode"),
         "eligibility_mode": state.get("_last_eligibility_mode"),
+        "eligibility_policy_id": state.get("_eligibility_policy_id"),
+        "eligibility_profile_fields": state.get("_eligibility_profile_fields", []),
         "current_topic": state.get("current_topic"),
         "current_policy_id": state.get("current_policy_id"),
         "last_result_policy_ids": state.get("last_result_policy_ids", []),
@@ -317,3 +319,4 @@ async def get_policies():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8000")))
+

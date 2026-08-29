@@ -410,6 +410,10 @@ function formatResponse(text) {
     });
 
     // 1b) [ACTION_BTN:type:label] → 액션 버튼
+    html = html.replace(/\[ACTION_BTN:RESET_PROFILE:([^:\]]+):([^\]]+)\]/g, (m, id, label) => {
+        return `<button class="elig-btn" onclick="resetAndShowFullCard('${id}', this)">👤 ${label}</button>`;
+    });
+    // 과거 응답/세션에 남은 구형 토큰도 계속 동작한다.
     html = html.replace(/\[ACTION_BTN:RESET_PROFILE:([^\]]+)\]/g, '<button class="elig-btn" onclick="resetAndShowFullCard(this)">👤 $1</button>');
     html = html.replace(/\[ACTION_BTN:RESET_CHAT:([^\]]+)\]/g, '<button class="elig-btn" onclick="resetChat()">🔄 $1</button>');
     html = html.replace(/\[ACTION_BTN:SHOW_ALTERNATIVES:([^\]]+)\]/g, '<button class="elig-btn" onclick="showAlternatives()">$1</button>');
@@ -834,6 +838,12 @@ function dispatchAction(action, displayText) {
 // active_clarify가 있으면 말풍선만 표시하고 흐름을 끊지 않는다.
 function renderResponseWithCard(data) {
     const st = data.state || {};
+    if (st.eligibility_policy_id) {
+        lastEligibilityPolicyId = st.eligibility_policy_id;
+    }
+    if (Array.isArray(st.eligibility_profile_fields) && st.eligibility_profile_fields.length > 0) {
+        lastEligibilityFields = [...st.eligibility_profile_fields];
+    }
     if (st.active_clarify === 'CLARIFY_PROFILE') {
         const missing = st.missing_fields || [];
         const pending = st.pending_tasks || [];
@@ -1006,7 +1016,19 @@ async function autoSubmitEligibilityCard(card) {
         const res = await apiFetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: SESSION_ID, message: '', ui_event: 'SUBMIT_PROFILE', profile: profile }),
+            body: JSON.stringify({
+                session_id: SESSION_ID,
+                message: '',
+                ui_event: 'SUBMIT_PROFILE',
+                profile: profile,
+                action: profileResumePolicyId ? {
+                    action: 'FOLLOW_UP',
+                    tasks: ['ELIGIBILITY'],
+                    policy_id: profileResumePolicyId,
+                    use_previous_context: true,
+                    confidence: 'high',
+                } : null,
+            }),
         });
         const data = await res.json();
         hideTyping();
@@ -1016,6 +1038,7 @@ async function autoSubmitEligibilityCard(card) {
             pendingInterest = st.interest_query.trim();
         }
         renderResponseWithCard(data);
+        profileResumePolicyId = null;
     } catch(e) { hideTyping(); addBotMessage("오류가 발생했어요."); }
     isWaiting = false;
     document.getElementById('sendBtn').disabled = false;
@@ -1393,7 +1416,9 @@ async function editAdditionalAnswers(policyId, btn) {
     }
 }
 
-function resetAndShowFullCard(btn) {
+function resetAndShowFullCard(policyIdOrBtn, maybeBtn) {
+    const hasPolicyId = typeof policyIdOrBtn === 'string';
+    const btn = hasPolicyId ? maybeBtn : policyIdOrBtn;
     const card = btn.closest('.chat-card');
     if (card) {
         card.querySelectorAll('button, input').forEach(el => el.disabled = true);
@@ -1401,13 +1426,21 @@ function resetAndShowFullCard(btn) {
     } else {
         btn.disabled = true;
     }
-    addBotMessage("프로필을 다시 입력해주세요.");
-    // 이전에 표시했던 필드와 동일하게 다시 표시 (lastMissingFields 사용)
-    showProfileCard(lastMissingFields || undefined);
+    profileResumePolicyId = hasPolicyId ? policyIdOrBtn : lastEligibilityPolicyId;
+    const fields = lastEligibilityFields && lastEligibilityFields.length > 0
+        ? lastEligibilityFields
+        : (lastMissingFields || undefined);
+    addBotMessage("직전 정책의 자격을 다시 확인할 수 있도록 프로필을 수정해주세요.");
+    // 이미 입력된 값도 바꿀 수 있도록 '누락 항목'이 아니라 현재 정책이
+    // 실제 판정에 사용하는 기본 Profile 필드 전체를 다시 표시한다.
+    showProfileCard(fields);
 }
 
 // 마지막으로 표시한 missing_fields 저장
 let lastMissingFields = null;
+let lastEligibilityPolicyId = null;
+let lastEligibilityFields = [];
+let profileResumePolicyId = null;
 
 async function manualSubmitEligibility(btn) {
     const card = btn.closest('.chat-card');
@@ -1444,3 +1477,4 @@ if (new URLSearchParams(window.location.search).get('start') === '1') {
 </script>
 </body>
 </html>
+
