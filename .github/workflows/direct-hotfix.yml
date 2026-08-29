@@ -1,0 +1,42 @@
+name: Direct core hotfix
+
+on:
+  push:
+    branches:
+      - fix/natural-menu-profile-eligibility
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[core-alias-fixed]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/natural-menu-profile-eligibility
+      - name: Patch agent canonical alias
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('agent.py')
+          text = path.read_text(encoding='utf-8')
+          old = '        "학생 아님": "해당하지 않음", "비학생": "해당하지 않음", "아니오": "해당하지 않음",\n'
+          new = '        "학생 아님": "해당하지 않음", "비학생": "해당하지 않음",\n'
+          if text.count(old) != 1:
+              raise SystemExit(f'alias line count={text.count(old)}')
+          text = text.replace(old, new, 1)
+          old_loop = '        value = aliases.get(str(value).strip(), str(value).strip())\n        if value in allowed:\n'
+          new_loop = '        raw_value = str(value).strip()\n        if key == "student" and raw_value == "아니오":\n            raw_value = "해당하지 않음"\n        value = aliases.get(raw_value, raw_value)\n        if value in allowed:\n'
+          if text.count(old_loop) != 1:
+              raise SystemExit(f'normalization loop count={text.count(old_loop)}')
+          text = text.replace(old_loop, new_loop, 1)
+          path.write_text(text, encoding='utf-8')
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add agent.py
+          git commit -m "Fix profile canonical alias collision [core-alias-fixed]"
+          git push origin HEAD:fix/natural-menu-profile-eligibility
