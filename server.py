@@ -44,6 +44,30 @@ NAVIGATION_PROMPT_RULES = """
 if NAVIGATION_PROMPT_RULES not in agent_module.PROMPT_A_INTENT:
     agent_module.PROMPT_A_INTENT += NAVIGATION_PROMPT_RULES
 
+# 추천의 주제/대안 전환은 공통 Profile을 그대로 재사용한다.
+# 사용자가 명시적으로 '조건 없이/프로필 없이'를 요청한 경우에만 탐색 모드로 둔다.
+_ORIGINAL_APPLY_ACTION_TRANSITION = agent_module.apply_action_transition
+
+
+def _profile_preserving_action_transition(state, action, bundles, preserve_workflow=False):
+    result = _ORIGINAL_APPLY_ACTION_TRANSITION(
+        state, action, bundles, preserve_workflow=preserve_workflow
+    )
+    if isinstance(action, dict):
+        kind = action.get("action")
+        tasks = action.get("tasks") or []
+        if (
+            kind in {"CHANGE_TOPIC", "SHOW_ALTERNATIVES"}
+            and "RECOMMEND" in tasks
+            and action.get("explore_without_profile") is not True
+        ):
+            state.pop("_skip_profile_check", None)
+            state.pop("_explore_mode", None)
+    return result
+
+
+agent_module.apply_action_transition = _profile_preserving_action_transition
+
 
 # === 앱 초기화 ===
 app = FastAPI(title="두물청 API")
@@ -195,7 +219,7 @@ def _is_navigation_prompt_candidate(message):
 def _clear_intent_probe_artifacts(state):
     for key in (
         "_intent_workflow", "_intent_turn_kind", "_intent_reuse_focus",
-        "_intent_confidence", "_rewritten_query",
+        "_intent_confidence", "_rewritten_query", "_normalized_action",
     ):
         state.pop(key, None)
 
@@ -238,16 +262,11 @@ def _eligibility_bundle(policy_id):
 
 
 def _navigation_ui_command(state, message, inferred_action):
-    """Prompt A가 확인한 세 가지 자연어 전환을 기존 버튼 UI 동작으로 수렴시킨다."""
-    if not isinstance(inferred_action, dict):
-        return None
-    action = inferred_action.get("action")
-    tasks = inferred_action.get("tasks") or []
+    """Prompt A 결과를 세 가지 기존 버튼 UI 동작으로 수렴시킨다."""
+    action = inferred_action.get("action") if isinstance(inferred_action, dict) else None
+    tasks = inferred_action.get("tasks") or [] if isinstance(inferred_action, dict) else []
 
     if _is_profile_reset_candidate(message):
-        # Prompt가 전체 RESET으로 흔들려도 '프로필' 재설정은 파괴적 전체 초기화로 보내지 않는다.
-        if action not in {"FOLLOW_UP", "NORMAL"} or "ELIGIBILITY" not in tasks:
-            return None
         policy_id = (
             state.get("_eligibility_policy_id")
             or state.get("selected_policy_id")
@@ -257,6 +276,12 @@ def _navigation_ui_command(state, message, inferred_action):
         bundle = _eligibility_bundle(policy_id)
         if not bundle:
             return None
+        # Prompt A를 먼저 호출해 의미를 확인하되, '프로필' 재설정 문장이
+        # 파괴적인 RESET으로 잘못 분류되어 전체 세션이 지워지는 것은 금지한다.
+        if action == "CLARIFY":
+            return None
+        if "ELIGIBILITY" not in tasks and action not in {"RESET", None}:
+            return None
         return {
             "type": "RESET_PROFILE",
             "policy_id": policy_id,
@@ -264,7 +289,9 @@ def _navigation_ui_command(state, message, inferred_action):
         }
 
     if _is_other_eligibility_candidate(message):
-        if action == "SHOW_ALTERNATIVES" and "ELIGIBILITY" in tasks:
+        if action == "CLARIFY":
+            return None
+        if "ELIGIBILITY" in tasks or action == "SHOW_ALTERNATIVES":
             return {"type": "START_ELIGIBILITY"}
         return None
 
@@ -345,7 +372,7 @@ async def chat(request: Request):
         state = get_session(session_id)
 
         # 정책 별칭이 포함된 자연어와 세 가지 UI 전환 자연어는 Prompt A가
-        # Action+Task 의미를 먼저 판단한다. 코드는 그 결과를 버튼 동작으로만 수렴시킨다.
+        # Action+Task 의미를 먼저 판단한다. 코드는 그 결과를 버튼 동작으로 수렴시킨다.
         should_probe_intent = (
             not ui_event
             and input_action is None
@@ -363,7 +390,7 @@ async def chat(request: Request):
             profile_before_probe = dict(state.get("profile") or {})
             analyze_user_turn(state, message)
             inferred_action = state.pop("_normalized_action", None)
-            # UI 전환 문장이 Profile 값까지 바꾸는 일은 없어야 한다.
+            # UI 전환 문장이 Profile 값을 바꾸는 일은 없어야 한다.
             if _is_navigation_prompt_candidate(message):
                 state["profile"] = profile_before_probe
                 state["profile_status"] = get_profile_status(state["profile"])
@@ -378,9 +405,15 @@ async def chat(request: Request):
                         state.update(get_default_state())
                         response = "대화가 초기화되었어요. 정책 검색, 맞춤 추천, 자격 확인 중 무엇을 도와드릴까요?"
                     elif ui_command["type"] == "START_ELIGIBILITY":
+                        # 자연어 '다른 자격 조회'도 버튼처럼 현재 자격 단위를 닫고
+                        # 새 정책 선택부터 시작한다. 공통 Profile 자체는 유지된다.
+                        reset_task_context(state)
                         response = ""
                     else:
                         policy_id = ui_command["policy_id"]
+                        # 진행 중 추가질문/Workflow와 재설정 카드가 충돌하지 않게
+                        # 현재 자격 단위를 닫고 같은 정책만 다시 고정한다.
+                        reset_task_context(state, keep_interest=True)
                         state["selected_policy_id"] = policy_id
                         state["current_policy_id"] = policy_id
                         state["focus_policy_id"] = policy_id
