@@ -141,7 +141,7 @@ Profile은 세션의 공통 상태로 누적·수정됩니다.
 
 자연어의 새 `NORMAL + RECOMMEND` 요청도 관심 분야가 이미 명시된 경우에는 관심 분야 선택 단계를 생략할 수 있지만, **일반 맞춤 추천은 최종 결과 전에 추천 조건 카드를 보여주어 현재 Profile을 다시 확인할 수 있게 합니다.**
 
-`SHOW_ALTERNATIVES`, `CHANGE_TOPIC`, `FOLLOW_UP` 같은 자연어 후속 추천은 기존 Profile을 유지합니다. 예를 들어 `이거 말고 다른 정책 추천해줘`는 직전 결과를 제외하고, `주거로 바꿔줘`는 관심 분야만 주거로 변경합니다.
+`SHOW_ALTERNATIVES`, `CHANGE_TOPIC`, `FOLLOW_UP` 같은 자연어 후속 추천도 기존 Profile을 유지한 채 추천 조건 카드를 다시 보여줍니다. 예를 들어 `이거 말고 다른 정책 추천해줘`, `주거로 바꿔줘` 모두 현재 Profile을 prefill해 사용자가 확인·수정한 뒤 추천을 실행합니다.
 
 ### 추천 조건 카드
 
@@ -220,14 +220,12 @@ LLM에 Profile을 전달할 때 State 값 자체는 유지하되, 문맥이 모�
 .
 ├─ server.py                 # FastAPI API 및 세션 처리
 ├─ agent.py                  # Action/Task, Workflow, RAG·추천·자격 실행
-├─ sitecustomize.py          # 추천 Profile/UI 계약 및 GPT 전달값 호환 보정
 ├─ prompts.py                # Intent·추천·자격 검토 Prompt
 ├─ state.py                  # Profile 및 대화 State 관리
 ├─ data_loader.py            # 정책 데이터 로딩 및 Bundle 구성
 ├─ vector_store.py           # 정책 Embedding / 검색
 ├─ static/
-│  ├─ index.html             # 챗봇 UI
-│  └─ navigation_sync.js     # 자연어 State → 기존 버튼 UI 동기화
+│  └─ index.html             # 챗봇 UI 및 자연어 State → 버튼 UI 동기화
 ├─ test_*.py                 # 회귀 및 Workflow 테스트
 └─ requirements.txt
 ```

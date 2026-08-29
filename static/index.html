@@ -741,7 +741,7 @@ async function submitRecommendProfile(btn) {
                     tasks: ['RECOMMEND'],
                     topic: pendingInterest,
                     use_previous_context: false,
-                    explore_without_profile: true,
+                    explore_without_profile: false,
                     confidence: 'high',
                 },
             }),
@@ -782,6 +782,7 @@ async function exploreWithoutProfile(btn) {
                     tasks: ['RECOMMEND'],
                     topic: pendingInterest,
                     use_previous_context: false,
+                    explore_without_profile: true,
                     confidence: 'high',
                 },
             }),
@@ -838,6 +839,41 @@ function dispatchAction(action, displayText) {
 // active_clarify가 있으면 말풍선만 표시하고 흐름을 끊지 않는다.
 function renderResponseWithCard(data) {
     const st = data.state || {};
+    const command = data.ui_command;
+    if (st.profile) serverProfile = st.profile;
+
+    if (command && command.type) {
+        isWaiting = false;
+        document.getElementById('sendBtn').disabled = false;
+        if (command.type === 'START_EXPLAIN') { startExplain(); return; }
+        if (command.type === 'START_RECOMMEND') { startRecommend(); return; }
+        if (command.type === 'START_ELIGIBILITY') { startEligibility(); return; }
+        if (command.type === 'RESET_CHAT') {
+            document.getElementById('chatMessages').innerHTML = '';
+            pendingInterest = '';
+            lastMissingFields = null;
+            lastEligibilityPolicyId = null;
+            lastEligibilityFields = [];
+            profileResumePolicyId = null;
+            serverProfile = st.profile || {};
+            addBotMessage(data.response || '대화가 초기화되었어요. 아래 버튼을 눌러보세요!');
+            return;
+        }
+        if (command.type === 'RESET_PROFILE') {
+            deactivateAllCards();
+            if (command.policy_id) {
+                lastEligibilityPolicyId = command.policy_id;
+                profileResumePolicyId = command.policy_id;
+            }
+            if (Array.isArray(command.fields)) {
+                lastEligibilityFields = [...command.fields];
+                lastMissingFields = [...command.fields];
+            }
+            if (data.response) addBotMessage(data.response);
+            showProfileCard(Array.isArray(command.fields) && command.fields.length ? command.fields : undefined);
+            return;
+        }
+    }
     if (st.eligibility_policy_id) {
         lastEligibilityPolicyId = st.eligibility_policy_id;
     }

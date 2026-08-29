@@ -230,6 +230,27 @@ def detect_navigation_action(state, message, bundles):
     # 특정 공식 정책명은 일반 분야 검색보다 우선한다.
     exact_policy = resolve_policy_alias(msg) or _contains_exact_policy_name(bundles, msg)
 
+    # "청년꽃간 자격조회하자", "월세 자격 확인해줘"처럼 현재 발화에
+    # 정책 대상과 자격 의도가 함께 있으면 직전 focus보다 이 정책을 우선한다.
+    if (
+        exact_policy
+        and _is_explicit_eligibility_request(msg)
+        # 설명+자격, 추천+자격처럼 한 발화에 여러 Task가 있으면
+        # 단일 자격 shortcut으로 가로채지 않고 atomic workflow에 맡긴다.
+        and not re.search(r"설명|알려|내용|뭐야", msg)
+        and not _is_explicit_recommend_request(msg)
+    ):
+        explicit_policy_id = resolve_policy_alias(msg) or _explicit_policy_id_from_name(msg)
+        if explicit_policy_id:
+            return validate_action_payload({
+                "action": "NORMAL",
+                "tasks": ["ELIGIBILITY"],
+                "policy_id": explicit_policy_id,
+                "policy_mention": _policy_name_for_id(explicit_policy_id, bundles),
+                "use_previous_context": False,
+                "confidence": "high",
+            })
+
     if current_policy_id and re.search(
         r"(?:이거|그거|이\s*정책|그\s*정책).*(?:비슷|유사).*(?:추천|다른\s*정책)",
         msg,
@@ -599,8 +620,9 @@ def apply_action_transition(state, action, bundles, preserve_workflow=False):
             )
             state["interest_query"] = next_topic or "전체"
             state["current_topic"] = next_topic or "전체"
-            state["_skip_profile_check"] = True
-            state["_explore_mode"] = True
+            if action.get("explore_without_profile"):
+                state["_skip_profile_check"] = True
+                state["_explore_mode"] = True
         clarifies = []
         if any(task in tasks for task in ("EXPLAIN", "ELIGIBILITY")) and not (
             new_policy_id or action.get("policy_mention")
@@ -616,8 +638,9 @@ def apply_action_transition(state, action, bundles, preserve_workflow=False):
             state["current_topic"] = topic
         if action.get("exclude_topics"):
             state["_exclude_topics"] = action["exclude_topics"]
-        state["_skip_profile_check"] = True
-        state["_explore_mode"] = True
+        if action.get("explore_without_profile"):
+            state["_skip_profile_check"] = True
+            state["_explore_mode"] = True
         return ["RECOMMEND"], ([] if topic else ["CLARIFY_PREFERENCE"]), None
 
     return tasks, [], None
@@ -709,6 +732,11 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None, input_a
     if user_message and user_message.strip():
         state["messages"].append({"role": "user", "content": user_message.strip()})
 
+    # 추천 조건 카드를 사용자가 직접 제출한 턴만 최종 추천 실행을 허용한다.
+    # 이 값은 reset_task_context의 작업 상태 초기화를 지나 run_recommend에서 1회 소비된다.
+    if ui_event == "SUBMIT_RECOMMEND_PROFILE":
+        state["_recommend_profile_submitted"] = True
+
     # 자격 확인 Profile에서 남양주시 비거주를 선택하면 현재 정책 판정을
     # 중단하고, 새로 자격을 확인할 정책을 고르는 카드로 전환한다.
     if (
@@ -756,6 +784,11 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None, input_a
             return state, guarded
 
         answer = (user_message or "").strip()
+        # Prompt A 결과와 별개로 사용자가 명시한 Profile 사실은 항상 공통 State에 누적한다.
+        # 예: "만 25세야 남양주 살아 미취업이야"를 한 턴에 모두 보존한다.
+        explicit_profile_patch = _normalize_profile_patch(extract_profile_patch_from_text(answer))
+        if explicit_profile_patch:
+            update_profile(state, explicit_profile_patch)
         pending_age = state.get("_pending_age_confirmation")
         explicit_age = extract_explicit_age(answer)
 
@@ -1085,7 +1118,7 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None, input_a
         msg_lower = user_message.lower() if user_message else ""
         is_eligibility_request = False
         eligibility_pattern = re.search(
-            r"자격\s*(?:(?:도|을|이)\s*)?(?:확인|되|돼|있)|"
+            r"자격\s*(?:(?:도|을|이)\s*)?(?:조회|확인|되|돼|있)|"
             r"가능한지|되는지\s*(?:안\s*되는지)?|나도\s*가능|"
             r"참여\s*(?:할\s*)?(?:수\s*있|가능)|"
             r"신청\s*(?:할\s*)?(?:수\s*있|가능)|"
@@ -1197,7 +1230,7 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None, input_a
                 "정확한 맞춤 추천을 위해 직접 입력해주세요. 무엇을 도와드릴까요?"
             )
         else:
-            response = "무엇을 도와드릴까요? 정책 설명, 맞춤 추천, 자격 확인 중 선택해주세요."
+            response = _intent_clarify_response("NO_TASK")
 
     state["messages"].append({"role": "assistant", "content": response})
     return state, response
@@ -1278,11 +1311,11 @@ def analyze_user_turn(state, user_message):
         # 구버전/테스트 payload는 기존 전환 규칙을 유지한다.
         reset_task_context(state, keep_focus=reuse_focus, keep_interest=False)
 
-    patch = result.get("profile_patch", {})
-    if isinstance(patch, dict):
-        clean_patch = {key: value for key, value in patch.items() if value is not None}
-        if clean_patch:
-            update_profile(state, clean_patch)
+    patch = _normalize_profile_patch(result.get("profile_patch", {}))
+    explicit_patch = _normalize_profile_patch(extract_profile_patch_from_text(user_message))
+    patch.update(explicit_patch)  # 사용자가 명시한 값이 모델 추정보다 우선
+    if patch:
+        update_profile(state, patch)
 
     workflow = []
     workflow_invalid = False
@@ -1415,23 +1448,26 @@ def _normalize_profile_patch(raw_patch):
     enums = {
         "residency": {"예", "아니오"},
         "employment": {"취업", "미취업"},
-        "student": {"대학생", "고등학생", "대학원생", "아니오"},
+        "student": {"대학생", "고등학생", "대학원생", "해당하지 않음"},
         "startup": {"창업 중", "창업 준비 중", "창업하지 않음"},
-        "housing": {"무주택", "유주택"},
+        "housing": {"무주택", "주택 소유"},
         "marriage": {"미혼", "기혼"},
     }
     aliases = {
         "네": "예", "아니요": "아니오", "거주": "예", "비거주": "아니오",
         "재직": "취업", "구직": "미취업", "취준": "미취업",
-        "학생 아님": "아니오", "비학생": "아니오",
+        "학생 아님": "해당하지 않음", "비학생": "해당하지 않음",
         "예비창업": "창업 준비 중", "미창업": "창업하지 않음",
-        "자가": "유주택", "기혼자": "기혼", "미혼자": "미혼",
+        "자가": "주택 소유", "유주택": "주택 소유", "기혼자": "기혼", "미혼자": "미혼",
     }
     for key, allowed in enums.items():
         value = raw_patch.get(key)
         if value is None:
             continue
-        value = aliases.get(str(value).strip(), str(value).strip())
+        raw_value = str(value).strip()
+        if key == "student" and raw_value == "아니오":
+            raw_value = "해당하지 않음"
+        value = aliases.get(raw_value, raw_value)
         if value in allowed:
             normalized[key] = value
     return normalized
@@ -1470,7 +1506,7 @@ def extract_profile_patch_from_text(text):
     elif re.search(r"고등학생|고등학교\s*재학", value):
         patch["student"] = "고등학생"
     elif re.search(r"학생\s*(?:이\s*)?(?:아니|아님)|비학생", value):
-        patch["student"] = "아니오"
+        patch["student"] = "해당하지 않음"
 
     if re.search(r"예비\s*창업|창업\s*(?:준비|예정)", value):
         patch["startup"] = "창업 준비 중"
@@ -1481,8 +1517,8 @@ def extract_profile_patch_from_text(text):
 
     if re.search(r"무주택|집(?:이|은)?\s*없|주택\s*없", value):
         patch["housing"] = "무주택"
-    elif re.search(r"유주택|자가\s*(?:있|보유)|주택\s*보유", value):
-        patch["housing"] = "유주택"
+    elif re.search(r"유주택|자가\s*(?:있|보유)|주택\s*보유|집(?:이|은)?\s*있", value):
+        patch["housing"] = "주택 소유"
 
     if re.search(r"미혼|결혼\s*(?:안|하지\s*않)", value):
         patch["marriage"] = "미혼"
@@ -2443,19 +2479,21 @@ def run_recommend(state, bundles):
     interest = normalized
     state["interest_query"] = normalized
     
-    # "조건 없이" 탐색 모드 여부
-    was_skip_mode = state.get("_explore_mode", False)
+    # "조건 없이"는 Profile을 삭제하지 않고 이번 추천에서만 사용하지 않는다.
+    was_skip_mode = bool(state.get("_explore_mode", False))
     state["_explore_mode"] = False
+    profile_submitted = bool(state.pop("_recommend_profile_submitted", False))
     
-    # "조건 없이"가 아닌 경우에만 Profile 체크
-    skip_profile = state.get("_skip_profile_check", False)
-    if not skip_profile:
-        if get_profile_status(profile) == "INCOMPLETE":
-            missing = get_missing_profile_fields(profile)
-            if len(missing) > 4:
-                return generate_clarify_question(state, "CLARIFY_PROFILE")
+    # 자연어 NORMAL/FOLLOW_UP/CHANGE_TOPIC/SHOW_ALTERNATIVES 모두 결과 전에
+    # 현재 공통 Profile이 prefill된 추천 조건 카드를 확인한다.
+    if not was_skip_mode and not profile_submitted:
+        missing = get_missing_profile_fields(profile)
+        state["active_clarify"] = "CLARIFY_PROFILE"
+        state["pending_tasks"] = ["RECOMMEND"]
+        state["_missing_fields"] = list(missing)
+        return generate_clarify_question(state, "CLARIFY_PROFILE")
     
-    # 사용 후 플래그 초기화
+    # 1회성 실행 플래그 정리
     state["_skip_profile_check"] = False
     
     # 1) 원본 Bundle과 구조화 규칙으로 후보/자격 상태를 먼저 고정한다.
@@ -2843,6 +2881,15 @@ def apply_ai_recommendation_judgments(candidates, parsed_payload):
     return ranked
 
 
+def _profile_for_ai(profile):
+    result = dict(profile or {})
+    if result.get("residency") == "예":
+        result["residency"] = "남양주시 거주"
+    elif result.get("residency") == "아니오":
+        result["residency"] = "남양주시 비거주"
+    return result
+
+
 def judge_recommendations_with_ai(candidates, bundles, profile, interest):
     """GPT가 모든 후보의 의미 적합성을 판정한다. 불완전 응답은 규칙 복구."""
     if not candidates:
@@ -2855,7 +2902,7 @@ def judge_recommendations_with_ai(candidates, bundles, profile, interest):
     ]
     prompt = PROMPT_C_RECOMMEND.format(
         interest_query=interest,
-        profile=json.dumps(profile, ensure_ascii=False),
+        profile=json.dumps(_profile_for_ai(profile), ensure_ascii=False),
         bundles_text=json.dumps(compact, ensure_ascii=False),
     )
     raw = call_openai(prompt, json_mode=True)
@@ -3464,16 +3511,18 @@ def merge_eligibility_review(rule_result, parsed_payload):
     ai_failed = _clean_ai_text_list(parsed_payload.get("failed_conditions"))
     ai_missing = _clean_ai_text_list(parsed_payload.get("missing_conditions"))
 
-    if rule_status == "PASS" and ai_status == "PASS":
+    if rule_status == "PASS":
+        # 구조화 규칙과 공식 추가질문이 모두 PASS면 AI가 이를 UNKNOWN/FAIL로
+        # 뒤집지 않는다. AI는 같은 방향의 설명만 보조할 수 있다.
         merged["eligibility_status"] = "PASS"
-        merged["matched_conditions"] = list(dict.fromkeys(rule_matched + ai_matched))
-        merged["explanation"] = (
-            f"{rule_result.get('explanation', '')} "
-            f"AI 보조 검토도 같은 방향입니다: {reason[:400]}"
-        ).strip()
+        if ai_status == "PASS":
+            merged["matched_conditions"] = list(dict.fromkeys(rule_matched + ai_matched))
+        merged["failed_conditions"] = []
+        merged["missing_conditions"] = list(rule_missing)
+        merged["explanation"] = rule_result.get("explanation", "")
         return merged
 
-    # 규칙이 UNKNOWN이거나 규칙과 GPT가 충돌하면 확정하지 않는다.
+    # 규칙이 UNKNOWN일 때만 AI의 추가 확인 의견을 보조적으로 병합한다.
     merged["eligibility_status"] = "UNKNOWN"
     extra_checks = ai_missing + [f"AI 추가 확인: {item}" for item in ai_failed]
     merged["missing_conditions"] = list(dict.fromkeys(rule_missing + extra_checks))
@@ -3483,6 +3532,21 @@ def merge_eligibility_review(rule_result, parsed_payload):
         f"AI 보조 검토에서도 확정하지 않고 추가 확인이 필요합니다: {reason[:400]}"
     ).strip()
     return merged
+
+
+def _sanitize_ai_eligibility_payload(payload, profile):
+    if not isinstance(payload, dict):
+        return payload
+    cleaned = dict(payload)
+    if (profile or {}).get("residency") == "예":
+        for key in ("failed_conditions", "missing_conditions"):
+            values = cleaned.get(key)
+            if isinstance(values, list):
+                cleaned[key] = [
+                    item for item in values
+                    if not ("남양주" in str(item) and "거주" in str(item))
+                ]
+    return cleaned
 
 
 def review_eligibility_with_ai(bundle, profile, existing_answers, rule_result):
@@ -3499,14 +3563,15 @@ def review_eligibility_with_ai(bundle, profile, existing_answers, rule_result):
     }
     prompt = PROMPT_D_ELIGIBILITY.format(
         policy_bundle=json.dumps(policy_bundle, ensure_ascii=False),
-        profile=json.dumps(profile, ensure_ascii=False),
+        profile=json.dumps(_profile_for_ai(profile), ensure_ascii=False),
         existing_answers=json.dumps(existing_answers, ensure_ascii=False),
         rule_result=json.dumps(rule_result, ensure_ascii=False),
     )
     raw = call_openai(prompt, json_mode=True)
     if not raw or raw.startswith("[ERROR]"):
         return None
-    return merge_eligibility_review(rule_result, parse_json_response(raw))
+    parsed = _sanitize_ai_eligibility_payload(parse_json_response(raw), profile)
+    return merge_eligibility_review(rule_result, parsed)
 
 
 def format_eligibility_response(
@@ -3825,7 +3890,7 @@ def _is_multi_explain_eligibility_request(message):
         return False
     has_explain = bool(re.search(r"(설명|알려|뭐야)", message))
     has_eligibility = bool(re.search(
-        r"자격\s*(?:(?:도|을|이)\s*)?(?:확인|되|돼|있)|"
+        r"자격\s*(?:(?:도|을|이)\s*)?(?:조회|확인|되|돼|있)|"
         r"가능한지|되는지|가능해|나도\s*가능|신청\s*(?:할\s*)?수|"
         r"지원\s*(?:받을\s*)?수|대상인지",
         message,
@@ -3847,7 +3912,7 @@ def _is_multi_interest_eligibility_request(message):
     if not message or "자격증" in message:
         return False
     has_eligibility = bool(re.search(
-        r"자격\s*(?:(?:도|을|이)\s*)?(?:확인|봐|검토|되|돼)|가능한지|신청\s*(?:할\s*)?수|지원\s*받을\s*수|대상인지",
+        r"자격\s*(?:(?:도|을|이)\s*)?(?:조회|확인|봐|검토|되|돼)|가능한지|신청\s*(?:할\s*)?수|지원\s*받을\s*수|대상인지",
         message,
     ))
     interests = [item.strip() for item in normalize_interests(message).split(",") if item.strip()]
@@ -3893,6 +3958,17 @@ def _extract_multi_policy_mention(message):
     """복합 질문의 첫 설명 동사 앞부분을 정책명 검색어로 사용한다."""
     head = re.split(r"\s*(?:설명|알려)", message, maxsplit=1)[0]
     return re.sub(r"\s*정책$", "", head).strip()
+
+
+def _is_explicit_eligibility_request(message):
+    """정책 자격을 직접 조회/확인하려는 자연어인지 판별한다."""
+    if not message or "자격증" in message:
+        return False
+    return bool(re.search(
+        r"자격\s*(?:조회|확인|봐|검토|되|돼|있는지)|"
+        r"가능한지|되는지|신청\s*(?:할\s*)?수|지원\s*(?:받을\s*)?수|대상인지",
+        message,
+    ))
 
 
 def _is_explicit_recommend_request(message):
@@ -3986,6 +4062,7 @@ def _should_reclassify_clarify_with_ai(message, active_clarify, bundles):
 
 # Clarify 중에도 새 작업으로 전환시키는 명시적 요청 패턴
 NEW_REQUEST_PATTERNS = [
+    "자격 조회하자", "자격조회하자", "자격 조회해줘", "자격조회해줘",
     "자격 확인해줘", "자격확인해줘", "자격 확인해 줘", "자격이 있는지",
     "자격 되는지", "자격되는지", "자격이 되는지", "되는지 안되는지",
     "정책에 대해 알려줘", "설명해줘", "설명해 줘", "알려줘",
