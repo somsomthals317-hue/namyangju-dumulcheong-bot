@@ -38,36 +38,13 @@ NAVIGATION_PROMPT_RULES = """
 추가 UI 전환 규칙:
 - "프로필 다시 설정할게", "프로필 다시 입력할래", "프로필 수정해서 다시 볼게"처럼 현재 자격조회 정책의 프로필만 다시 확인하려는 말은 전체 상담 RESET이 아닙니다. 현재 자격조회 정책을 유지하고 action=FOLLOW_UP, tasks=["ELIGIBILITY"], reuse_focus=true, use_previous_context=true로 판단하세요.
 - "다른 자격 조회할게", "다른 정책 자격 확인할래", "다른 자격도 볼래"처럼 새 정책의 자격을 고르려는 말은 action=SHOW_ALTERNATIVES, tasks=["ELIGIBILITY"], policy_mention=null, reuse_focus=false, use_previous_context=false로 판단하고 CLARIFY_POLICY가 필요합니다.
+- "정책 알아보자", "맞춤 추천해보자", "자격조회하자"처럼 정책명이 없는 단일 메뉴 발화는 각각 EXPLAIN, RECOMMEND, ELIGIBILITY 메뉴 시작 의미입니다.
+- "청년꽃간 자격조회하자"처럼 구체적인 정책명이 함께 있으면 메뉴 시작이 아니라 해당 정책의 ELIGIBILITY 요청으로 판단하세요.
 - "대화 초기화할게", "대화 전부 초기화", "처음부터 새로 시작할게"처럼 상담 전체를 지우겠다는 의미일 때만 action=RESET을 사용하세요.
 - '프로필'이라는 말이 명시되어 있으면 프로필 재확인과 대화 전체 초기화를 구분하세요. 프로필 재확인을 RESET으로 분류하지 마세요.
 """
 if NAVIGATION_PROMPT_RULES not in agent_module.PROMPT_A_INTENT:
     agent_module.PROMPT_A_INTENT += NAVIGATION_PROMPT_RULES
-
-# 추천의 주제/대안 전환은 공통 Profile을 그대로 재사용한다.
-# 사용자가 명시적으로 '조건 없이/프로필 없이'를 요청한 경우에만 탐색 모드로 둔다.
-_ORIGINAL_APPLY_ACTION_TRANSITION = agent_module.apply_action_transition
-
-
-def _profile_preserving_action_transition(state, action, bundles, preserve_workflow=False):
-    result = _ORIGINAL_APPLY_ACTION_TRANSITION(
-        state, action, bundles, preserve_workflow=preserve_workflow
-    )
-    if isinstance(action, dict):
-        kind = action.get("action")
-        tasks = action.get("tasks") or []
-        if (
-            kind in {"CHANGE_TOPIC", "SHOW_ALTERNATIVES"}
-            and "RECOMMEND" in tasks
-            and action.get("explore_without_profile") is not True
-        ):
-            state.pop("_skip_profile_check", None)
-            state.pop("_explore_mode", None)
-    return result
-
-
-agent_module.apply_action_transition = _profile_preserving_action_transition
-
 
 # === 앱 초기화 ===
 app = FastAPI(title="두물청 API")
@@ -115,7 +92,6 @@ MAX_CONCURRENT_AGENT_CALLS = max(
 )
 agent_slots = asyncio.Semaphore(MAX_CONCURRENT_AGENT_CALLS)
 SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
-CHAT_SYNC_SCRIPT = '<script src="/static/navigation_sync.js"></script>'
 
 
 def validate_session_id(value):
@@ -169,10 +145,7 @@ def get_session_lock(session_id):
 
 def _load_chat_html():
     with open("static/index.html", "r", encoding="utf-8") as f:
-        content = f.read()
-    if CHAT_SYNC_SCRIPT not in content:
-        content = content.replace("</body>", f"{CHAT_SYNC_SCRIPT}\n</body>")
-    return content
+        return f.read()
 
 
 def _is_bare_policy_alias_message(message):
@@ -185,6 +158,26 @@ def _is_bare_policy_alias_message(message):
         for aliases, _ in POLICY_QUERY_ALIASES
         for alias in aliases
     )
+
+
+def _simple_menu_type(message):
+    compact = re.sub(r"[^0-9a-z가-힣]", "", str(message or "").lower())
+    explain = {
+        "정책알아보자", "정책알아보기", "정책찾아보자", "정책좀보자", "청년정책알아보자",
+    }
+    recommend = {
+        "맞춤추천하자", "맞춤추천해보자", "맞춤추천받자", "맞춤추천받기", "추천받자",
+    }
+    eligibility = {
+        "자격조회하자", "자격조회해보자", "자격확인하자", "자격확인해보자", "자격확인하기",
+    }
+    if compact in explain:
+        return "START_EXPLAIN"
+    if compact in recommend:
+        return "START_RECOMMEND"
+    if compact in eligibility:
+        return "START_ELIGIBILITY"
+    return None
 
 
 def _is_profile_reset_candidate(message):
@@ -210,7 +203,8 @@ def _is_chat_reset_candidate(message):
 
 def _is_navigation_prompt_candidate(message):
     return (
-        _is_profile_reset_candidate(message)
+        _simple_menu_type(message) is not None
+        or _is_profile_reset_candidate(message)
         or _is_other_eligibility_candidate(message)
         or _is_chat_reset_candidate(message)
     )
@@ -265,6 +259,10 @@ def _navigation_ui_command(state, message, inferred_action):
     """Prompt A 결과를 세 가지 기존 버튼 UI 동작으로 수렴시킨다."""
     action = inferred_action.get("action") if isinstance(inferred_action, dict) else None
     tasks = inferred_action.get("tasks") or [] if isinstance(inferred_action, dict) else []
+
+    menu_type = _simple_menu_type(message)
+    if menu_type:
+        return {"type": menu_type}
 
     if _is_profile_reset_candidate(message):
         policy_id = (
@@ -404,9 +402,9 @@ async def chat(request: Request):
                         state.clear()
                         state.update(get_default_state())
                         response = "대화가 초기화되었어요. 정책 검색, 맞춤 추천, 자격 확인 중 무엇을 도와드릴까요?"
-                    elif ui_command["type"] == "START_ELIGIBILITY":
-                        # 자연어 '다른 자격 조회'도 버튼처럼 현재 자격 단위를 닫고
-                        # 새 정책 선택부터 시작한다. 공통 Profile 자체는 유지된다.
+                    elif ui_command["type"] in {"START_ELIGIBILITY", "START_EXPLAIN", "START_RECOMMEND"}:
+                        # 단일 메뉴 자연어는 하단 퀵 버튼과 같은 새 작업 단위를 시작한다.
+                        # 공통 Profile은 reset_task_context에서 삭제되지 않는다.
                         reset_task_context(state)
                         response = ""
                     else:
