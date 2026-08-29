@@ -22,7 +22,10 @@ from data_loader import (
     load_origin_documents, enrich_origin_policy_ids, build_policy_bundles
 )
 from vector_store import initialize_vector_store
-from state import get_default_state, reset_task_context, update_profile
+from state import (
+    get_default_state, get_policy_needed_fields, get_profile_status,
+    reset_task_context, update_profile,
+)
 from agent import configure_openai, handle_turn
 
 # === 앱 초기화 ===
@@ -184,10 +187,53 @@ async def chat(request: Request):
     async with lock:
         state = get_session(session_id)
 
+        # 직전 자격조회에서 '다른 자격 조회하기'로 새 정책을 고르면 기존에
+        # 채워진 공통 Profile 때문에 추가 질문으로 바로 건너뛰지 않는다.
+        # 새 정책이 실제 판정에 사용하는 기본 필드만 다시 받게 해서,
+        # 정책 선택 → 정책 맞춤 Profile 카드 → 추가 질문 순서를 보장한다.
+        if isinstance(input_action, dict):
+            action_kind = input_action.get("action")
+            action_tasks = input_action.get("tasks") or []
+            target_policy = input_action.get("policy_id")
+            previous_policy = state.get("current_policy_id") or state.get("focus_policy_id")
+            if (
+                action_kind == "NORMAL"
+                and "ELIGIBILITY" in action_tasks
+                and target_policy
+                and state.get("last_task") == "ELIGIBILITY"
+                and previous_policy
+                and target_policy != previous_policy
+            ):
+                target_bundle = next(
+                    (bundle for bundle in bundles if bundle.get("policy_id") == target_policy),
+                    None,
+                )
+                if target_bundle:
+                    for field in get_policy_needed_fields(target_bundle):
+                        if field in state.get("profile", {}):
+                            state["profile"][field] = None
+                    state["profile_status"] = get_profile_status(state["profile"])
+                    # 새 정책의 자격을 다시 시작하는 흐름이므로 과거에 이 정책을
+                    # 조회한 적이 있더라도 추가 질문 답변은 이번 조회에서 다시 받는다.
+                    state.setdefault("policy_answers", {}).pop(target_policy, None)
+
         # Profile 업데이트가 있으면 handle_turn 전에 반드시 적용
         profile_data = body.get("profile")
         if profile_data:
             update_profile(state, profile_data)
+
+        # '프로필 다시 설정하기'에서 같은 정책의 Profile을 제출한 경우,
+        # 이전 추가질문 답변을 유지하면 run_eligibility가 질문을 완료된 것으로
+        # 보고 바로 결과로 넘어간다. 이 진입점에서만 해당 정책 답변을 지워
+        # 수정된 Profile 뒤 추가질문을 처음부터 자연스럽게 이어간다.
+        if (
+            ui_event == "SUBMIT_PROFILE"
+            and isinstance(input_action, dict)
+            and input_action.get("action") == "FOLLOW_UP"
+            and "ELIGIBILITY" in (input_action.get("tasks") or [])
+            and input_action.get("policy_id")
+        ):
+            state.setdefault("policy_answers", {}).pop(input_action["policy_id"], None)
 
         # interest를 별도 필드로 받으면 정규화하여 저장
         interest_raw = body.get("interest") or (profile_data or {}).get("interest")
@@ -319,4 +365,3 @@ async def get_policies():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8000")))
-
