@@ -28,10 +28,10 @@ jobs:
         run: python -m pip install -r requirements.txt
 
       - name: Compile Python sources
-        run: python -m compileall -q agent.py state.py data_loader.py server.py prompts.py test_intent_regression.py test_hardening.py test_action_workflow.py test_action_task_backbone.py test_policy_agent_matrix.py test_conversation_workflows.py
+        run: python -m compileall -q agent.py state.py data_loader.py server.py prompts.py test_intent_regression.py test_hardening.py test_action_workflow.py test_action_task_backbone.py test_policy_agent_matrix.py test_conversation_workflows.py test_recommend_profile_ui_patch.py
 
       - name: Run intent and hardening regressions
-        run: python -m unittest test_intent_regression.py test_hardening.py test_action_workflow.py test_action_task_backbone.py test_policy_agent_matrix.py test_conversation_workflows.py -v
+        run: python -m unittest test_intent_regression.py test_hardening.py test_action_workflow.py test_action_task_backbone.py test_policy_agent_matrix.py test_conversation_workflows.py test_recommend_profile_ui_patch.py -v
 
       - name: Check inline frontend JavaScript syntax
         run: |
