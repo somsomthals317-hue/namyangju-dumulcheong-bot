@@ -1,0 +1,27 @@
+name: Apply final card routing UX
+
+on:
+  push:
+    branches:
+      - fix/final-card-routing-ux
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[card-routing-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/final-card-routing-ux
+      - name: Apply core patch
+        run: python tools/apply_final_card_routing_ux.py
+      - name: Commit core changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add agent.py server.py static/index.html README.md
+          git commit -m "Fix card routing and profile reuse UX [card-routing-applied]"
+          git push origin HEAD:fix/final-card-routing-ux
