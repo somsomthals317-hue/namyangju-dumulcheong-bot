@@ -8,49 +8,6 @@ def replace_once(text, old, new, label):
     return text.replace(old, new, 1)
 
 
-# The first patch has already modified these files when this script runs.
-p = Path('static/index.html')
-h = p.read_text(encoding='utf-8')
-
-# Make the result-level multi-workflow resume flag strictly one-shot.
-h = replace_once(
-    h,
-    """    try {\n        const res = await apiFetch('/api/chat', {\n""",
-    """    const resumeMultiWorkflow = resumeMultiWorkflowOnRecommendProfile;\n    resumeMultiWorkflowOnRecommendProfile = false;\n    try {\n        const res = await apiFetch('/api/chat', {\n""",
-    'capture one-shot resume flag in submitRecommendProfile',
-)
-h = replace_once(
-    h,
-    """                    resume_multi_workflow: resumeMultiWorkflowOnRecommendProfile,\n""",
-    """                    resume_multi_workflow: resumeMultiWorkflow,\n""",
-    'use captured resume flag in submitRecommendProfile',
-)
-h = replace_once(
-    h,
-    """        renderResponseWithCard(data);\n        resumeMultiWorkflowOnRecommendProfile = false;\n""",
-    """        renderResponseWithCard(data);\n""",
-    'remove late resume flag reset',
-)
-
-# Condition-less from a reopened result card must also preserve the atomic workflow,
-# and the flag must not leak into a later unrelated recommendation.
-explore_anchor = """async function exploreWithoutProfile(btn) {\n    const card = btn.closest('.chat-card');\n"""
-h = replace_once(
-    h,
-    explore_anchor,
-    """async function exploreWithoutProfile(btn) {\n    const resumeMultiWorkflow = resumeMultiWorkflowOnRecommendProfile;\n    resumeMultiWorkflowOnRecommendProfile = false;\n    const card = btn.closest('.chat-card');\n""",
-    'capture resume flag in exploreWithoutProfile',
-)
-h = replace_once(
-    h,
-    """                    explore_without_profile: true,\n                    confidence: 'high',\n""",
-    """                    explore_without_profile: true,\n                    resume_multi_workflow: resumeMultiWorkflow,\n                    confidence: 'high',\n""",
-    'send resume flag in conditionless path',
-)
-
-p.write_text(h, encoding='utf-8', newline='')
-
-
 p = Path('test_conversation_workflows.py')
 t = p.read_text(encoding='utf-8')
 old_test = '''    def test_result_profile_rerun_restores_completed_multi_query_contract(self):
@@ -144,13 +101,5 @@ new_test = '''    def test_result_profile_rerun_restores_completed_multi_query_c
         self.assertEqual(state["last_tasks"], ["EXPLAIN", "RECOMMEND"])
 '''
 t = replace_once(t, old_test, new_test, 'fix result-level profile rerun test')
-
-t = replace_once(
-    t,
-    '''        self.assertIn("resume_multi_workflow: resumeMultiWorkflowOnRecommendProfile", submit_block)\n''',
-    '''        self.assertIn("resume_multi_workflow: resumeMultiWorkflow", submit_block)\n        self.assertIn("resume_multi_workflow: resumeMultiWorkflow", explore_block)\n''',
-    'assert one-shot resume flag in both frontend paths',
-)
 p.write_text(t, encoding='utf-8')
-
 print('multi workflow resume follow-up applied')
