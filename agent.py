@@ -880,9 +880,22 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None, input_a
         return state, response
 
     # 1. UI와 자연어를 공통 Action으로 먼저 정규화한다.
+    # 한 발화에 설명/추천/자격 중 2개 이상이 명시되면 단일 Action shortcut보다
+    # atomic workflow를 먼저 확정한다. Prompt A가 Task를 누락하거나 navigation
+    # 규칙이 한 Task만 선점해도 사용자 원문의 작업 수/순서가 사라지지 않는다.
     normalized_action = validate_action_payload(input_action)
     if not normalized_action and not ui_event:
-        normalized_action = detect_navigation_action(state, user_message, bundles)
+        atomic_steps = infer_atomic_workflow_from_message(state, user_message, bundles)
+        if len(atomic_steps) >= 2:
+            atomic_tasks = [step['task'] for step in atomic_steps]
+            normalized_action = validate_action_payload({
+                'action': 'RUN_WORKFLOW',
+                'tasks': atomic_tasks,
+                'workflow': atomic_steps,
+                'confidence': 'high',
+            })
+        else:
+            normalized_action = detect_navigation_action(state, user_message, bundles)
 
     # 같은 요청이라면 버튼과 자연어가 동일한 탐색 모드를 사용한다. 구조화
     # Action이 들어와도 현재 발화의 '조건 없이' 의미를 버리지 않는다.
@@ -3664,17 +3677,17 @@ def format_eligibility_response(
         lines.append(
             f"\n[ACTION_BTN:EDIT_ADDITIONAL:{policy_id}:추가 답변 다시 입력하기]"
         )
-    
-    # FAIL 또는 UNKNOWN이면 액션 버튼 추가
-    if status in ("FAIL", "UNKNOWN"):
-        if policy_id:
-            lines.append(
-                f"\n[ACTION_BTN:RESET_PROFILE:{policy_id}:프로필 다시 설정하기]"
-            )
-        else:
-            lines.append("\n[ACTION_BTN:RESET_PROFILE:프로필 다시 설정하기]")
-        lines.append("[ACTION_BTN:NORMAL_ELIGIBILITY:다른 자격 조회하기]")
-        lines.append("[ACTION_BTN:RESET_CHAT:대화 초기화하기]")
+
+    # 최종 판정 상태와 Additional Question 유무에 관계없이 사용자는
+    # Profile을 다시 검토하거나 다른 정책 자격조회/대화 초기화로 이동할 수 있다.
+    if policy_id:
+        lines.append(
+            f"\n[ACTION_BTN:RESET_PROFILE:{policy_id}:프로필 다시 설정하기]"
+        )
+    else:
+        lines.append("\n[ACTION_BTN:RESET_PROFILE:프로필 다시 설정하기]")
+    lines.append("[ACTION_BTN:NORMAL_ELIGIBILITY:다른 자격 조회하기]")
+    lines.append("[ACTION_BTN:RESET_CHAT:대화 초기화하기]")
     
     return "\n".join(lines)
 

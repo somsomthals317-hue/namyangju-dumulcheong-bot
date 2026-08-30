@@ -118,6 +118,17 @@
         }
         .chat-card-btn:hover { opacity:0.9; }
         .chat-card-btn:disabled { opacity:0.5; cursor:not-allowed; }
+        .aq-action-row {
+            display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+            gap:8px; margin-bottom:12px;
+        }
+        .aq-action-btn {
+            width:100%; min-width:0; margin:0; padding:10px 4px;
+            background:#f8f8f8; color:#555; border:1px solid #ddd;
+            border-radius:10px; font-size:11px; font-weight:600; line-height:1.2;
+            cursor:pointer; white-space:nowrap; word-break:keep-all;
+        }
+        .aq-action-btn:hover { border-color:#1e8c6e; background:#f0faf7; }
 
         /* 관심분야 버튼 그리드 */
         .interest-grid {
@@ -1359,9 +1370,9 @@ function showAdditionalQuestionCard(aq) {
     card.innerHTML = `
         <div class="chat-card-title">📝 추가 자격 조건 확인</div>
         ${policyContext}
-        <div style="display:flex;gap:8px;margin-bottom:12px;">
-            <button type="button" class="chat-card-btn" style="background:#f8f8f8;color:#555;border:1px solid #ddd;flex:1;margin:0;" onclick="resetAndShowFullCard('${aq.policy_id || ''}', this)">프로필 다시 설정하기</button>
-            <button type="button" class="chat-card-btn" style="background:#f8f8f8;color:#555;border:1px solid #ddd;flex:1;margin:0;" onclick="startEligibility()">다른 정책 선택</button>
+        <div class="aq-action-row">
+            <button type="button" class="aq-action-btn" onclick="resetAndShowFullCard('${aq.policy_id || ''}', this)">프로필 다시 설정하기</button>
+            <button type="button" class="aq-action-btn" onclick="startEligibility()">다른 정책 선택</button>
         </div>
         <div style="font-size:13px;color:#64748b;margin:2px 0 12px;">
             전체 ${total}개 중 ${batchStart}~${batchEnd}번 · ${remaining}개 남음
