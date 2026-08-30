@@ -410,6 +410,10 @@ async def chat(request: Request):
             and input_action is None
             and message.strip()
             and get_guardrail_response(message) is None
+            # 설명+추천(+자격)처럼 작업 동사가 2개 이상 명시된 문장은
+            # Prompt A 사전 probe에서 축약하지 않는다. Agent의 deterministic
+            # Atomic parser가 원문 Task 수/순서/대상을 처음부터 소유한다.
+            and not agent_module._looks_like_multi_task_request(message)
             and (
                 (
                     resolve_policy_alias(message)

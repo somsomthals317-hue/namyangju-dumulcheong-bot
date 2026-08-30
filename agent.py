@@ -759,11 +759,11 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None, input_a
     # 이 값은 reset_task_context의 작업 상태 초기화를 지나 run_recommend에서 1회 소비된다.
     if ui_event == "SUBMIT_RECOMMEND_PROFILE":
         state["_recommend_profile_submitted"] = True
-        if (
-            not state.get("active_workflow")
-            and isinstance(input_action, dict)
-            and input_action.get("resume_multi_workflow") is True
-        ):
+        # 완료된 멀티쿼리 결과에서 추천 Profile을 다시 확인하는 경우에는
+        # 프론트의 임시 boolean에 의존하지 않고 서버 State의 마지막 Atomic
+        # Workflow를 자동 복원한다. 새 추천/버튼 시작 시 reset_task_context가
+        # 이 snapshot을 지우므로 unrelated 새 작업에는 과거 설명이 붙지 않는다.
+        if not state.get("active_workflow") and state.get("_last_completed_workflow"):
             _restore_completed_multi_workflow_for_recommend(state)
 
     # 자격 확인 Profile에서 남양주시 비거주를 선택하면 현재 정책 판정을
