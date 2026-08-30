@@ -1,0 +1,90 @@
+name: Repair index minimal diff
+
+on:
+  push:
+    branches:
+      - fix/final-card-routing-ux
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: ${{ !contains(github.event.head_commit.message, '[index-minimal]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/final-card-routing-ux
+          fetch-depth: 0
+      - name: Restore main index and apply only intended edits
+        run: |
+          git checkout origin/main -- static/index.html
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('static/index.html')
+          text = p.read_bytes().decode('utf-8')
+          nl = '\r\n' if '\r\n' in text else '\n'
+          def cv(s): return s.replace('\n', nl)
+          def once(old, new, label):
+              global text
+              old, new = cv(old), cv(new)
+              c = text.count(old)
+              if c != 1:
+                  raise RuntimeError(f'{label}: {c}')
+              text = text.replace(old, new, 1)
+
+          once(
+          '''    html = html.replace(/\\[ACTION_BTN:RESET_CHAT:([^\\]]+)\\]/g, '<button class="elig-btn" onclick="resetChat()">🔄 $1</button>');\n''',
+          '''    html = html.replace(/\\[ACTION_BTN:RESET_CHAT:([^\\]]+)\\]/g, '<button class="elig-btn" onclick="resetChat()">🔄 $1</button>');\n    html = html.replace(/\\[ACTION_BTN:RESET_RECOMMEND_PROFILE:([^\\]]+)\\]/g, '<button class="elig-btn" onclick="reopenRecommendProfile(this)">👤 $1</button>');\n''',
+          'action parser')
+
+          once(
+          '''    const ageVal = pcSelections.age || '';\n    let html = `\n        <div class="chat-card-title">🎯 추천 조건 확인</div>\n''',
+          '''    const ageVal = pcSelections.age || '';\n    const interestLabel = pendingInterest && pendingInterest.trim() ? pendingInterest.trim() : '전체';\n    let html = `\n        <div class="chat-card-title">🎯 추천 조건 확인</div>\n        <div style="font-size:13px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:9px 11px;margin-bottom:12px;">\n            📌 관심 분야: <strong>${escapeHtml(interestLabel)}</strong>\n        </div>\n''',
+          'interest context')
+
+          once(
+          '''async function exploreWithoutProfile(btn) {\n''',
+          '''function reopenRecommendProfile(btn) {\n    if (btn) btn.disabled = true;\n    deactivateAllCards();\n    addBotMessage('현재 관심 분야는 유지하고 추천 조건을 다시 확인해주세요. 기존 프로필 값이 미리 선택되어 있어요.');\n    showRecommendProfileCard();\n}\n\nasync function exploreWithoutProfile(btn) {\n''',
+          'reopen recommend')
+
+          once(
+          '''    if (st.eligibility_policy_id) {\n        lastEligibilityPolicyId = st.eligibility_policy_id;\n    }\n''',
+          '''    if (st.eligibility_policy_id) {\n        lastEligibilityPolicyId = st.eligibility_policy_id;\n    }\n    if (st.eligibility_policy_name) {\n        lastEligibilityPolicyName = st.eligibility_policy_name;\n    }\n''',
+          'policy name track')
+
+          once(
+          '''    card.innerHTML = `\n        <div class="chat-card-title">${title}</div>\n        ${fieldsHtml}\n''',
+          '''    const eligibilityContext = isPartial && lastEligibilityPolicyName\n        ? `<div style="font-size:13px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:9px 11px;margin-bottom:12px;">✅ 선택 정책: <strong>${escapeHtml(lastEligibilityPolicyName)}</strong></div>`\n        : '';\n\n    card.innerHTML = `\n        <div class="chat-card-title">${title}</div>\n        ${eligibilityContext}\n        ${fieldsHtml}\n''',
+          'profile policy context')
+
+          once(
+          '''function showAdditionalQuestionCard(aq) {\n    aqSelections = {};\n    currentAqPolicyId = aq.policy_id || null;\n    const container = document.getElementById('chatMessages');\n''',
+          '''function showAdditionalQuestionCard(aq) {\n    aqSelections = {};\n    currentAqPolicyId = aq.policy_id || null;\n    const policyName = aq.policy_name || lastEligibilityPolicyName || '';\n    if (policyName) lastEligibilityPolicyName = policyName;\n    const container = document.getElementById('chatMessages');\n''',
+          'additional policy setup')
+
+          once(
+          '''    card.innerHTML = `\n        <div class="chat-card-title">📝 추가 자격 조건 확인</div>\n        <div style="font-size:13px;color:#64748b;margin:2px 0 12px;">\n''',
+          '''    const policyContext = policyName\n        ? `<div style="font-size:13px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 11px;margin-bottom:10px;">✅ 선택 정책: <strong>${escapeHtml(policyName)}</strong></div>`\n        : '';\n    card.innerHTML = `\n        <div class="chat-card-title">📝 추가 자격 조건 확인</div>\n        ${policyContext}\n        <div style="display:flex;gap:8px;margin-bottom:12px;">\n            <button type="button" class="chat-card-btn" style="background:#f8f8f8;color:#555;border:1px solid #ddd;flex:1;margin:0;" onclick="resetAndShowFullCard('${aq.policy_id || ''}', this)">프로필 다시 설정하기</button>\n            <button type="button" class="chat-card-btn" style="background:#f8f8f8;color:#555;border:1px solid #ddd;flex:1;margin:0;" onclick="startEligibility()">다른 정책 선택</button>\n        </div>\n        <div style="font-size:13px;color:#64748b;margin:2px 0 12px;">\n''',
+          'additional actions')
+
+          once(
+          '''let lastEligibilityPolicyId = null;\nlet lastEligibilityFields = [];\nlet profileResumePolicyId = null;\n''',
+          '''let lastEligibilityPolicyId = null;\nlet lastEligibilityPolicyName = '';\nlet lastEligibilityFields = [];\nlet profileResumePolicyId = null;\n''',
+          'policy global')
+
+          once(
+          '''            lastEligibilityPolicyId = null;\n            lastEligibilityFields = [];\n            profileResumePolicyId = null;\n''',
+          '''            lastEligibilityPolicyId = null;\n            lastEligibilityPolicyName = '';\n            lastEligibilityFields = [];\n            profileResumePolicyId = null;\n''',
+          'reset policy global')
+
+          p.write_bytes(text.encode('utf-8'))
+          PY
+      - name: Commit repaired minimal diff
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add static/index.html
+          git commit -m "Preserve frontend line endings [index-minimal]"
+          git push origin HEAD:fix/final-card-routing-ux
