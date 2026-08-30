@@ -348,6 +348,129 @@ class ConversationWorkflowRegressionTests(unittest.TestCase):
         self.assertIn("white-space:nowrap", html)
         self.assertIn('class="aq-action-btn"', html)
 
+    def test_two_task_profile_pause_resume_keeps_explain_in_final_answer(self):
+        state = complete_state()
+        with patch.object(agent, "run_explain", return_value="월세 정책 설명"):
+            state, first = agent.handle_turn(
+                state,
+                "청년월세 지원사업 설명해주고 주거 정책도 추천해줘",
+                None,
+                BUNDLES,
+            )
+        self.assertEqual(state["active_clarify"], "CLARIFY_PROFILE")
+        self.assertEqual(state["active_workflow"]["results"]["EXPLAIN"], "월세 정책 설명")
+
+        with patch.object(agent, "run_recommend", return_value="주거 추천 결과"):
+            state, final = agent.handle_turn(
+                state,
+                "",
+                None,
+                BUNDLES,
+                ui_event="SUBMIT_RECOMMEND_PROFILE",
+                input_action={"action": "NORMAL", "tasks": ["RECOMMEND"], "topic": "주거"},
+            )
+        self.assertIsNone(state["active_workflow"])
+        self.assertIn("월세 정책 설명", final)
+        self.assertIn("주거 추천 결과", final)
+
+    def test_three_task_profile_pause_resume_reaches_eligibility_clarify(self):
+        state = complete_state()
+        with patch.object(agent, "run_explain", return_value="월세 정책 설명"):
+            state, first = agent.handle_turn(
+                state,
+                "청년월세 지원사업 설명해주고 주거 정책 추천해주고 청년월세 지원사업 자격도 확인해줘",
+                None,
+                BUNDLES,
+            )
+        self.assertEqual(state["active_clarify"], "CLARIFY_PROFILE")
+        self.assertEqual(state["pending_tasks"], ["RECOMMEND", "ELIGIBILITY"])
+
+        def fake_eligibility(current_state, bundles):
+            current_state["active_clarify"] = "CLARIFY_ADDITIONAL"
+            current_state["_active_additional_q"] = {
+                "policy_id": "NYJ-YOUTH-011",
+                "policy_name": "청년월세 지원사업",
+                "questions": [{"question_id": "q1", "question": "추가 조건?", "options": ["예", "아니오"], "q_num": 1}],
+                "total": 1,
+                "batch_start": 1,
+                "batch_end": 1,
+                "remaining": 1,
+            }
+            return "추가 자격 확인이 필요해요."
+
+        with patch.object(agent, "run_recommend", return_value="주거 추천 결과"), patch.object(
+            agent, "run_eligibility", side_effect=fake_eligibility
+        ):
+            state, second = agent.handle_turn(
+                state,
+                "",
+                None,
+                BUNDLES,
+                ui_event="SUBMIT_RECOMMEND_PROFILE",
+                input_action={"action": "NORMAL", "tasks": ["RECOMMEND"], "topic": "주거"},
+            )
+        self.assertEqual(state["active_clarify"], "CLARIFY_ADDITIONAL")
+        self.assertEqual(state["pending_tasks"], ["ELIGIBILITY"])
+        self.assertEqual(state["active_workflow"]["index"], 2)
+        self.assertIn("정책 설명과 맞춤 추천", second)
+
+    def test_result_profile_rerun_restores_completed_multi_query_contract(self):
+        state = complete_state()
+        # 첫 턴은 실제 run_recommend를 사용해 추천 Profile 확인에서 멈춘다.
+        with patch.object(agent, "run_explain", return_value="원래 월세 설명"):
+            state, first = agent.handle_turn(
+                state,
+                "청년월세 지원사업 설명해주고 주거 정책도 추천해줘",
+                None,
+                BUNDLES,
+            )
+        self.assertEqual(state["active_clarify"], "CLARIFY_PROFILE")
+        self.assertEqual(state["active_workflow"]["results"]["EXPLAIN"], "원래 월세 설명")
+
+        # Profile 제출로 첫 멀티쿼리를 정상 완료한다.
+        with patch.object(agent, "run_recommend", return_value="첫 주거 추천"):
+            state, first_final = agent.handle_turn(
+                state,
+                "",
+                None,
+                BUNDLES,
+                ui_event="SUBMIT_RECOMMEND_PROFILE",
+                input_action={"action": "NORMAL", "tasks": ["RECOMMEND"], "topic": "주거"},
+            )
+        self.assertIsNone(state["active_workflow"])
+        self.assertIn("원래 월세 설명", first_final)
+        self.assertIn("첫 주거 추천", first_final)
+        self.assertIsInstance(state.get("_last_completed_workflow"), dict)
+
+        # 결과의 프로필 다시 설정하기에서 재제출하면 EXPLAIN은 보존하고
+        # RECOMMEND부터 다시 실행해 최종 묶음 응답을 만든다.
+        with patch.object(agent, "run_recommend", return_value="수정 Profile 주거 추천"):
+            state, rerun = agent.handle_turn(
+                state,
+                "",
+                None,
+                BUNDLES,
+                ui_event="SUBMIT_RECOMMEND_PROFILE",
+                input_action={
+                    "action": "NORMAL",
+                    "tasks": ["RECOMMEND"],
+                    "topic": "주거",
+                    "resume_multi_workflow": True,
+                },
+            )
+        self.assertIn("원래 월세 설명", rerun)
+        self.assertIn("수정 Profile 주거 추천", rerun)
+        self.assertEqual(state["last_tasks"], ["EXPLAIN", "RECOMMEND"])
+
+    def test_recommend_profile_frontend_always_renders_following_workflow_cards(self):
+        with open("static/index.html", "r", encoding="utf-8") as file:
+            html = file.read()
+        submit_block = html[html.index("async function submitRecommendProfile"):html.index("function reopenRecommendProfile")]
+        explore_block = html[html.index("async function exploreWithoutProfile"):html.index("function onInterestSelected")]
+        self.assertIn("renderResponseWithCard(data)", submit_block)
+        self.assertIn("renderResponseWithCard(data)", explore_block)
+        self.assertIn("resume_multi_workflow: resumeMultiWorkflowOnRecommendProfile", submit_block)
+
     def test_generic_alternative_excludes_all_visible_recommendations(self):
         state = complete_state()
         state["current_topic"] = "농업"
