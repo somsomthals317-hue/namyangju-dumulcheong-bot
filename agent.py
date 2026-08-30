@@ -849,7 +849,10 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None, input_a
                 r"정책|추천|자격|설명|알려|가능|신청|지원|봐\s*줘|찾아",
                 answer,
             ))
-            if has_task_request and not state.get("active_clarify"):
+            if has_task_request:
+                # 새 Task가 명시된 문장에서는 나이/Profile 사실만 먼저 저장하고
+                # 아래 Action/Task 라우팅을 계속한다. 기존 Clarify가 새 요청을
+                # 가로채지 못하게 하는 것이 핵심이다.
                 update_profile(state, {"age": explicit_age})
             else:
                 response = resume_after_age_update(
@@ -3160,6 +3163,7 @@ def format_recommend_response(
             )
     
     lines.append("\n더 자세히 알고 싶은 정책이 있으면 정책명을 말씀해주세요!")
+    lines.append("\n[ACTION_BTN:RESET_RECOMMEND_PROFILE:프로필 다시 설정하기]")
     
     return "\n".join(lines)
 
@@ -3362,6 +3366,7 @@ def run_eligibility(state, bundles):
         q_start = len(additional_qs) - len(unanswered) + 1
         state["_active_additional_q"] = {
             "policy_id": policy_id,
+            "policy_name": bundle["policy_name"],
             "questions": [
                 {
                     "question_id": q["question_id"],
