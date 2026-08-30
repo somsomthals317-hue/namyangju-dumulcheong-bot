@@ -1,0 +1,30 @@
+name: Restore frontend CRLF
+on:
+  push:
+    branches:
+      - fix/multi-query-and-card-layout
+    paths:
+      - tools/restore_index_crlf.py
+      - .github/workflows/restore-index-crlf.yml
+permissions:
+  contents: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/multi-query-and-card-layout
+          fetch-depth: 0
+      - name: Fetch main
+        run: git fetch origin main
+      - name: Restore frontend line endings and apply minimal changes
+        run: python tools/restore_index_crlf.py
+      - name: Remove temporary files and commit
+        run: |
+          rm tools/restore_index_crlf.py .github/workflows/restore-index-crlf.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Keep frontend patch minimal"
+          git push
