@@ -758,6 +758,7 @@ async function submitRecommendProfile(btn) {
                     topic: pendingInterest,
                     use_previous_context: false,
                     explore_without_profile: false,
+                    resume_multi_workflow: resumeMultiWorkflowOnRecommendProfile,
                     confidence: 'high',
                 },
             }),
@@ -766,12 +767,10 @@ async function submitRecommendProfile(btn) {
         hideTyping();
         const st = data.state || {};
         if (st.profile) serverProfile = st.profile;
-        if (st.active_clarify === 'CLARIFY_PREFERENCE') {
-            addBotMessage(data.response);
-            showInterestCardsInChat();
-        } else {
-            addBotMessage(data.response);
-        }
+        // 멀티쿼리는 추천 제출 뒤 ELIGIBILITY 등 다음 Clarify로 이어질 수 있으므로
+        // 말풍선만 그리지 말고 공통 State→카드 렌더러를 반드시 사용한다.
+        renderResponseWithCard(data);
+        resumeMultiWorkflowOnRecommendProfile = false;
     } catch(e) { hideTyping(); addBotMessage("오류가 발생했어요. 다시 시도해주세요."); }
     isWaiting = false;
     document.getElementById('sendBtn').disabled = false;
@@ -779,6 +778,8 @@ async function submitRecommendProfile(btn) {
 
 function reopenRecommendProfile(btn) {
     if (btn) btn.disabled = true;
+    // 결과 카드에서 다시 설정한 경우에만 완료된 멀티쿼리 Atomic 계약을 재사용한다.
+    resumeMultiWorkflowOnRecommendProfile = true;
     deactivateAllCards();
     addBotMessage('현재 관심 분야는 유지하고 추천 조건을 다시 확인해주세요. 기존 프로필 값이 미리 선택되어 있어요.');
     showRecommendProfileCard();
@@ -813,7 +814,7 @@ async function exploreWithoutProfile(btn) {
         const data = await res.json();
         hideTyping();
         if (data.state && data.state.profile) serverProfile = data.state.profile;
-        addBotMessage(data.response);
+        renderResponseWithCard(data);
     } catch(e) { hideTyping(); addBotMessage("오류가 발생했어요. 다시 시도해주세요."); }
     isWaiting = false;
     document.getElementById('sendBtn').disabled = false;
@@ -1039,6 +1040,7 @@ async function submitProfile() {
 // === State 기반 카드 UI 함수들 ===
 // 프로필 임시 저장소 (칩 버튼 선택값)
 let pcSelections = {};
+let resumeMultiWorkflowOnRecommendProfile = false;
 
 function makeChipRow(field, label, options) {
     return `

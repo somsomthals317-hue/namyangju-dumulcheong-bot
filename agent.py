@@ -759,6 +759,12 @@ def handle_turn(state, user_message, collection, bundles, ui_event=None, input_a
     # 이 값은 reset_task_context의 작업 상태 초기화를 지나 run_recommend에서 1회 소비된다.
     if ui_event == "SUBMIT_RECOMMEND_PROFILE":
         state["_recommend_profile_submitted"] = True
+        if (
+            not state.get("active_workflow")
+            and isinstance(input_action, dict)
+            and input_action.get("resume_multi_workflow") is True
+        ):
+            _restore_completed_multi_workflow_for_recommend(state)
 
     # 자격 확인 Profile에서 남양주시 비거주를 선택하면 현재 정책 판정을
     # 중단하고, 새로 자격을 확인할 정책을 고르는 카드로 전환한다.
@@ -2027,6 +2033,47 @@ def _workflow_pause_response(workflow, task, question):
     return question
 
 
+def _restore_completed_multi_workflow_for_recommend(state):
+    """완료된 멀티쿼리의 추천 Profile 재설정 시 원래 Atomic 계약을 복원한다."""
+    snapshot = state.get("_last_completed_workflow")
+    if not isinstance(snapshot, dict):
+        return False
+    raw_steps = snapshot.get("steps")
+    if not isinstance(raw_steps, list) or len(raw_steps) < 2:
+        return False
+    steps = [dict(step) for step in raw_steps if isinstance(step, dict)]
+    recommend_index = next(
+        (index for index, step in enumerate(steps) if step.get("task") == "RECOMMEND"),
+        None,
+    )
+    if recommend_index is None:
+        return False
+
+    old_results = snapshot.get("results") if isinstance(snapshot.get("results"), dict) else {}
+    preserved_results = {}
+    for step in steps[:recommend_index]:
+        task = step.get("task")
+        if task in old_results:
+            preserved_results[task] = old_results[task]
+
+    # 추천부터 뒤의 단계는 새 Profile 기준으로 다시 실행한다.
+    for step in steps[recommend_index:]:
+        step["transition_applied"] = False
+        step["pre_clarifies"] = []
+
+    state["active_workflow"] = {
+        "steps": steps,
+        "index": recommend_index,
+        "results": preserved_results,
+        "original_query": snapshot.get("original_query") or "",
+        "build_error": None,
+    }
+    state["pending_tasks"] = [step.get("task") for step in steps[recommend_index:]]
+    state["active_clarify"] = None
+    state["_original_query"] = snapshot.get("original_query") or ""
+    return True
+
+
 def execute_active_workflow(state, collection, bundles):
     """복합 task를 순서대로 실행하며 Clarify에서 멈추고 다음 턴에 재개한다."""
     workflow = state.get("active_workflow")
@@ -2153,6 +2200,12 @@ def execute_active_workflow(state, collection, bundles):
         state["pending_tasks"] = [item["task"] for item in steps[index + 1:]]
 
     final_results = dict(results)
+    if len(steps) > 1 and any(step.get("task") == "RECOMMEND" for step in steps):
+        state["_last_completed_workflow"] = {
+            "steps": [dict(step) for step in steps],
+            "results": dict(final_results),
+            "original_query": workflow.get("original_query", ""),
+        }
     state["active_workflow"] = None
     state["pending_tasks"] = []
     state["last_tasks"] = [step["task"] for step in steps]

@@ -118,6 +118,8 @@ TASK_TRANSIENT_KEYS = (
     "_follow_up_field",
     "_eligibility_policy_id",
     "_eligibility_profile_fields",
+    # 새 작업을 명시적으로 시작하면 과거 멀티쿼리 재실행 계약도 폐기한다.
+    "_last_completed_workflow",
 )
 
 
