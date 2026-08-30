@@ -285,6 +285,69 @@ class ConversationWorkflowRegressionTests(unittest.TestCase):
                 ]
                 self.assertEqual(actual, expected)
 
+    def test_exact_user_explain_plus_recommend_is_atomic_before_prompt_a(self):
+        state = complete_state()
+        seen = []
+        def fake_explain(current_state, query, collection):
+            seen.append(("EXPLAIN", current_state.get("_policy_mention"), query))
+            return "청년월세 설명"
+        def fake_recommend(current_state, bundles):
+            seen.append(("RECOMMEND", current_state.get("interest_query"), None))
+            return "주거 추천"
+        with patch.object(agent, "run_explain", side_effect=fake_explain), patch.object(agent, "run_recommend", side_effect=fake_recommend), patch.object(agent, "call_openai", side_effect=AssertionError("Prompt A must not decide explicit multi-task routing")):
+            next_state, response = agent.handle_turn(state, "청년월세 지원사업 설명해주고 주거 정책도 추천해줘", None, BUNDLES)
+        self.assertEqual([item[0] for item in seen], ["EXPLAIN", "RECOMMEND"])
+        self.assertEqual(seen[1][1], "주거")
+        self.assertIn("청년월세 설명", response)
+        self.assertIn("주거 추천", response)
+        self.assertEqual(next_state["last_tasks"], ["EXPLAIN", "RECOMMEND"])
+
+    def test_three_task_query_preserves_explain_recommend_eligibility_order(self):
+        state = complete_state()
+        seen = []
+        def fake_explain(current_state, query, collection):
+            seen.append("EXPLAIN")
+            current_state["current_policy_id"] = "NYJ-YOUTH-001"
+            current_state["focus_policy_id"] = "NYJ-YOUTH-001"
+            return "월세 설명"
+        def fake_recommend(current_state, bundles):
+            seen.append("RECOMMEND")
+            return "주거 추천"
+        def fake_eligibility(current_state, bundles):
+            seen.append("ELIGIBILITY")
+            return "월세 자격 결과"
+        with patch.object(agent, "run_explain", side_effect=fake_explain), patch.object(agent, "run_recommend", side_effect=fake_recommend), patch.object(agent, "run_eligibility", side_effect=fake_eligibility), patch.object(agent, "call_openai", side_effect=AssertionError("Prompt A must not collapse three explicit tasks")):
+            next_state, response = agent.handle_turn(state, "청년월세 지원사업 설명해주고 주거 정책 추천해주고 청년월세 지원사업 자격도 확인해줘", None, BUNDLES)
+        self.assertEqual(seen, ["EXPLAIN", "RECOMMEND", "ELIGIBILITY"])
+        self.assertEqual(next_state["last_tasks"], ["EXPLAIN", "RECOMMEND", "ELIGIBILITY"])
+        self.assertIn("월세 설명", response)
+        self.assertIn("주거 추천", response)
+        self.assertIn("월세 자격 결과", response)
+
+    def test_final_eligibility_actions_exist_for_pass_without_additional(self):
+        result = {"eligibility_status":"PASS","explanation":"조건을 충족했습니다.","matched_conditions":["만 19세 이상"],"failed_conditions":[],"missing_conditions":[]}
+        response = agent.format_eligibility_response("청년성장 프로젝트", result, policy_id="NYJ-YOUTH-001", has_additional=False)
+        self.assertIn("ACTION_BTN:RESET_PROFILE", response)
+        self.assertIn("ACTION_BTN:NORMAL_ELIGIBILITY", response)
+        self.assertIn("ACTION_BTN:RESET_CHAT", response)
+        self.assertNotIn("ACTION_BTN:EDIT_ADDITIONAL", response)
+
+    def test_final_eligibility_additional_edit_is_conditional(self):
+        result = {"eligibility_status":"PASS","explanation":"조건을 충족했습니다.","matched_conditions":[],"failed_conditions":[],"missing_conditions":[]}
+        response = agent.format_eligibility_response("테스트 정책", result, policy_id="NYJ-YOUTH-001", has_additional=True)
+        self.assertIn("ACTION_BTN:EDIT_ADDITIONAL", response)
+        self.assertIn("ACTION_BTN:RESET_PROFILE", response)
+        self.assertIn("ACTION_BTN:NORMAL_ELIGIBILITY", response)
+        self.assertIn("ACTION_BTN:RESET_CHAT", response)
+
+    def test_additional_action_buttons_use_nonbreaking_two_column_layout(self):
+        with open("static/index.html", "r", encoding="utf-8") as file:
+            html = file.read()
+        self.assertIn(".aq-action-row", html)
+        self.assertIn("grid-template-columns:minmax(0,1fr) minmax(0,1fr)", html)
+        self.assertIn("white-space:nowrap", html)
+        self.assertIn('class="aq-action-btn"', html)
+
     def test_generic_alternative_excludes_all_visible_recommendations(self):
         state = complete_state()
         state["current_topic"] = "농업"
