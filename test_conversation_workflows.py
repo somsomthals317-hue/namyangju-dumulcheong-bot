@@ -455,12 +455,19 @@ class ConversationWorkflowRegressionTests(unittest.TestCase):
                     "action": "NORMAL",
                     "tasks": ["RECOMMEND"],
                     "topic": "주거",
-                    "resume_multi_workflow": True,
                 },
             )
         self.assertIn("원래 월세 설명", rerun)
         self.assertIn("수정 Profile 주거 추천", rerun)
         self.assertEqual(state["last_tasks"], ["EXPLAIN", "RECOMMEND"])
+
+    def test_server_front_door_never_prompt_probes_explicit_multi_task_query(self):
+        with open("server.py", "r", encoding="utf-8") as file:
+            server = file.read()
+        self.assertIn(
+            "and not agent_module._looks_like_multi_task_request(message)",
+            server,
+        )
 
     def test_recommend_profile_frontend_always_renders_following_workflow_cards(self):
         with open("static/index.html", "r", encoding="utf-8") as file:
