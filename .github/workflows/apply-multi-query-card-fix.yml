@@ -1,0 +1,31 @@
+name: Apply multi-query card fix
+on:
+  push:
+    branches:
+      - fix/multi-query-and-card-layout
+    paths:
+      - tools/apply_multi_query_card_fix.py
+      - .github/workflows/apply-multi-query-card-fix.yml
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/multi-query-and-card-layout
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Apply patch
+        run: python tools/apply_multi_query_card_fix.py
+      - name: Remove temporary patch files
+        run: rm tools/apply_multi_query_card_fix.py .github/workflows/apply-multi-query-card-fix.yml
+      - name: Commit direct source changes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Fix multi-query routing and eligibility actions"
+          git push
