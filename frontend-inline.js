@@ -1,0 +1,1204 @@
+
+// sessionStorage로 세션 유지 (새로고침 시 유지, 탭 닫으면 삭제)
+let SESSION_ID = sessionStorage.getItem('dumoolchung_session');
+if (!SESSION_ID) {
+    SESSION_ID = 'session_' + (
+        crypto.randomUUID
+            ? crypto.randomUUID()
+            : `${Date.now()}_${Math.random().toString(16).slice(2)}`
+    );
+    sessionStorage.setItem('dumoolchung_session', SESSION_ID);
+}
+let isWaiting = false;
+
+async function apiFetch(url, options = {}, timeoutMs = 60000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return response;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+// window에 노출 (자동 테스트에서 상태 확인용)
+window.policiesList = [];
+window.eligibilityPoliciesList = [];
+let policiesLoadPromise = null;
+
+// === 시작 ===
+function startChat() {
+    document.getElementById('startScreen').classList.add('hidden');
+    document.getElementById('chatScreen').classList.add('active');
+    addBotMessage("안녕하세요! 저는 두물청, 남양주시 청년정책 AI 상담사입니다.\n\n아래 버튼을 눌러보세요.\n\n📋 정책 알아보기 - 목록에서 정책을 골라 상세 설명\n🎯 맞춤 추천받기 - 관심 분야 선택 후 맞춤 추천\n✅ 자격 확인하기 - 특정 정책 자격 요건 확인\n\n또는 자유롭게 질문해도 됩니다!");
+    policiesLoadPromise = loadPolicies();
+}
+
+async function loadPolicies() {
+    try {
+        const res = await apiFetch('/api/policies');
+        const data = await res.json();
+        policiesList = data.policies || [];
+        eligibilityPoliciesList = data.eligibility_policies || [];
+    } catch(e) { policiesList = []; eligibilityPoliciesList = []; }
+}
+
+// === 메시지 렌더링 ===
+function addBotMessage(text) {
+    const container = document.getElementById('chatMessages');
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'message bot';
+    msgDiv.innerHTML = `
+        <img src="/static/profile_jeong_yakyong.png" alt="남양주시 정약용 캐릭터" class="msg-avatar">
+        <div class="msg-bubble">${formatResponse(text)}</div>
+    `;
+    container.appendChild(msgDiv);
+    scrollToBottom();
+}
+
+function formatResponse(text) {
+    text = String(text || '답변을 불러오지 못했어요. 잠시 후 다시 시도해주세요.');
+    // 1) [ELIG_BTN:id:name] → 버튼
+    let html = text.replace(/\[ELIG_BTN:([^:]+):([^\]]+)\]/g, (m, id, name) => {
+        return `<button class="elig-btn" onclick="checkEligibility('${id}','${name}')">🔍 자격 요건 추가로 확인하기</button>`;
+    });
+
+    // 1b) [ACTION_BTN:type:label] → 액션 버튼
+    html = html.replace(/\[ACTION_BTN:RESET_PROFILE:([^:\]]+):([^\]]+)\]/g, (m, id, label) => {
+        return `<button class="elig-btn" onclick="resetAndShowFullCard('${id}', this)">👤 ${label}</button>`;
+    });
+    // 과거 응답/세션에 남은 구형 토큰도 계속 동작한다.
+    html = html.replace(/\[ACTION_BTN:RESET_PROFILE:([^\]]+)\]/g, '<button class="elig-btn" onclick="resetAndShowFullCard(this)">👤 $1</button>');
+    html = html.replace(/\[ACTION_BTN:RESET_CHAT:([^\]]+)\]/g, '<button class="elig-btn" onclick="resetChat()">🔄 $1</button>');
+    html = html.replace(/\[ACTION_BTN:RESET_RECOMMEND_PROFILE:([^\]]+)\]/g, '<button class="elig-btn" onclick="reopenRecommendProfile(this)">👤 $1</button>');
+    html = html.replace(/\[ACTION_BTN:SHOW_ALTERNATIVES:([^\]]+)\]/g, '<button class="elig-btn" onclick="showAlternatives()">$1</button>');
+    html = html.replace(/\[ACTION_BTN:NORMAL_EXPLAIN:([^\]]+)\]/g, '<button class="elig-btn" onclick="startExplain()">📋 $1</button>');
+    html = html.replace(/\[ACTION_BTN:NORMAL_RECOMMEND:([^\]]+)\]/g, '<button class="elig-btn" onclick="startRecommend()">🎯 $1</button>');
+    html = html.replace(/\[ACTION_BTN:NORMAL_ELIGIBILITY:([^\]]+)\]/g, '<button class="elig-btn" onclick="startEligibility()">✅ $1</button>');
+    html = html.replace(/\[ACTION_BTN:EDIT_ADDITIONAL:([^:]+):([^\]]+)\]/g, (m, id, label) => {
+        return `<button class="elig-btn" onclick="editAdditionalAnswers('${id}', this)">✏️ ${label}</button>`;
+    });
+
+    // 2) [text](url) 마크다운 링크 → <a> (이스케이프 전에 처리)
+    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" style="color:#1a5276;">$1</a>');
+
+    // 3) 일반 URL → 클릭 가능 링크 (아직 <a>로 안 감싸진 것만)
+    // URL 뒤의 정책 설명 괄호는 화면에 남기되 링크 주소에는 포함하지 않는다.
+    html = html.replace(/(^|[^"'>])(https?:\/\/[^\s<()\[\]{}]+)/gm, '$1<a href="$2" target="_blank" style="color:#1a5276;">$2</a>');
+
+    // 4) 버튼+링크 보존하면서 나머지 이스케이프
+    const preserved = [];
+    let idx = 0;
+    html = html.replace(/<(button|a)[^>]*>.*?<\/(button|a)>/g, m => { preserved.push(m); return `§KEEP${idx++}§`; });
+    html = escapeHtml(html);
+    preserved.forEach((p, j) => { html = html.replace(`§KEEP${j}§`, p); });
+
+    // 5) **bold** 제거
+    html = html.replace(/\*\*([^*]+)\*\*/g, '$1');
+
+    // 6) ### 헤딩 제거
+    html = html.replace(/^#{1,3}\s*/gm, '');
+
+    return html;
+}
+
+function addUserMessage(text) {
+    const container = document.getElementById('chatMessages');
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'message user';
+    msgDiv.innerHTML = `<div class="msg-bubble">${escapeHtml(text)}</div>`;
+    container.appendChild(msgDiv);
+    scrollToBottom();
+}
+
+function showTyping() {
+    const container = document.getElementById('chatMessages');
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'message bot';
+    msgDiv.id = 'typingMsg';
+    msgDiv.innerHTML = `
+        <img src="/static/profile_jeong_yakyong.png" alt="남양주시 정약용 캐릭터" class="msg-avatar">
+        <div class="msg-bubble" style="padding:6px 14px; display:inline-flex; align-items:center; min-height:0;">
+            <div class="typing-indicator"><span></span><span></span><span></span></div>
+        </div>
+    `;
+    container.appendChild(msgDiv);
+    scrollToBottom();
+}
+function hideTyping() { const el = document.getElementById('typingMsg'); if(el) el.remove(); }
+function scrollToBottom() { const c = document.getElementById('chatMessages'); c.scrollTop = c.scrollHeight; }
+function escapeHtml(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+
+// === 활성 카드 비활성화 (새 작업 시작 시) ===
+function deactivateAllCards() {
+    document.querySelectorAll('.chat-card').forEach(c => {
+        c.querySelectorAll('button, input, select').forEach(el => el.disabled = true);
+        c.style.opacity = '0.45';
+    });
+}
+
+// === 하단 3개 버튼 — 구조화 이벤트 ===
+async function startExplain() {
+    if (isWaiting) return;
+    isWaiting = true;
+    if (policiesList.length === 0) {
+        policiesLoadPromise = policiesLoadPromise || loadPolicies();
+        await policiesLoadPromise;
+    }
+    isWaiting = false;
+    if (policiesList.length === 0) {
+        addBotMessage('정책 목록을 불러오지 못했어요. 잠시 후 다시 눌러주세요.');
+        return;
+    }
+    deactivateAllCards();
+    showPolicyList('EXPLAIN');
+}
+
+async function startEligibility() {
+    if (isWaiting) return;
+    isWaiting = true;
+    if (eligibilityPoliciesList.length === 0) {
+        policiesLoadPromise = policiesLoadPromise || loadPolicies();
+        await policiesLoadPromise;
+    }
+    isWaiting = false;
+    if (eligibilityPoliciesList.length === 0) {
+        addBotMessage('자격 확인 정책 목록을 불러오지 못했어요. 잠시 후 다시 눌러주세요.');
+        return;
+    }
+    deactivateAllCards();
+    showPolicyList('ELIGIBILITY');
+}
+
+async function startRecommend() {
+    if (isWaiting) return;
+    deactivateAllCards();
+    pendingInterest = '';
+    // 서버에 START_RECOMMEND 이벤트로 이전 작업 정리
+    isWaiting = true;
+    try {
+        const res = await apiFetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: SESSION_ID, message: '', ui_event: 'START_RECOMMEND_RESET' }),
+        });
+        const data = await res.json();
+        if (data.state && data.state.profile) serverProfile = data.state.profile;
+    } catch(e) {}
+    isWaiting = false;
+    showInterestCards();
+}
+
+// === 📋 정책 알아보기 / ✅ 자격 확인하기 → 목록 드롭다운 카드 ===
+function showPolicyList(mode) {
+    const container = document.getElementById('chatMessages');
+    const label = mode === 'EXPLAIN' ? '어떤 정책에 대해 알고 싶으세요?' : '어떤 정책의 자격을 확인할까요?';
+
+    // 봇 메시지로 안내
+    addBotMessage(label + '\n아래에서 정책을 선택해주세요.');
+
+    // 카드 UI 삽입
+    const card = document.createElement('div');
+    card.className = 'chat-card';
+    const listToUse = mode === 'ELIGIBILITY' ? eligibilityPoliciesList : policiesList;
+    card.innerHTML = `
+        <div class="chat-card-title">${mode === 'EXPLAIN' ? '📋 정책 선택' : '✅ 자격 확인할 정책'}</div>
+        <select id="policySelect_${Date.now()}">
+            <option value="">정책을 선택하세요</option>
+            ${listToUse.map(p => `<option value="${p.policy_name}">${p.policy_name}</option>`).join('')}
+        </select>
+        <button class="chat-card-btn" onclick="onPolicySelected(this, '${mode}')">선택 완료</button>
+    `;
+    container.appendChild(card);
+    scrollToBottom();
+}
+
+function onPolicySelected(btn, mode) {
+    const select = btn.previousElementSibling;
+    const policyName = select.value;
+    if (!policyName) return;
+    btn.disabled = true;
+    select.disabled = true;
+
+    const policy = [...policiesList, ...eligibilityPoliciesList]
+        .find(item => item.policy_name === policyName);
+    const policyId = policy ? policy.policy_id : null;
+    const isExplain = mode === 'EXPLAIN';
+    return dispatchAction({
+        action: 'NORMAL',
+        tasks: [isExplain ? 'EXPLAIN' : 'ELIGIBILITY'],
+        policy_id: policyId,
+        policy_mention: policyName,
+        use_previous_context: false,
+        confidence: 'high',
+    }, isExplain
+        ? `${policyName} 정책에 대해 알려줘`
+        : `${policyName} 자격 확인해줘`);
+}
+
+// === 🎯 맞춤 추천받기 → 관심분야 카드 ===
+function showInterestCards() {
+    addBotMessage('어떤 분야의 정책에 관심이 있으세요?\n여러 개 선택 가능해요. 선택 후 완료 버튼을 눌러주세요.');
+
+    const container = document.getElementById('chatMessages');
+    const card = document.createElement('div');
+    card.className = 'chat-card';
+    const interests = ['취업', '주거', '창업', '교육', '복지', '참여·문화', '기본소득', '농업', '전체'];
+    card.innerHTML = `
+        <div class="chat-card-title">🎯 관심 분야 선택 (복수 선택 가능)</div>
+        <div class="interest-grid">
+            ${interests.map(i => `<button class="interest-btn" data-interest="${i}" onclick="toggleInterest(this)">${i}</button>`).join('')}
+        </div>
+        <button class="chat-card-btn" style="margin-top:10px;" onclick="submitInterests(this)">선택 완료</button>
+    `;
+    container.appendChild(card);
+    scrollToBottom();
+}
+
+function toggleInterest(btn) {
+    if (btn.dataset.interest === '전체') {
+        // 전체 선택시 다른 것 해제
+        btn.closest('.interest-grid').querySelectorAll('.interest-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    } else {
+        // 전체 해제
+        btn.closest('.interest-grid').querySelector('[data-interest="전체"]').classList.remove('active');
+        btn.classList.toggle('active');
+    }
+}
+
+let pendingInterest = '';
+
+function submitInterests(btn) {
+    const card = btn.closest('.chat-card');
+    const selected = [...card.querySelectorAll('.interest-btn.active')].map(b => b.dataset.interest);
+    if (selected.length === 0) {
+        showCardError(card, '관심 분야를 하나 이상 선택해주세요.');
+        return;
+    }
+
+    card.querySelectorAll('button').forEach(b => b.disabled = true);
+    card.style.opacity = '0.6';
+    pendingInterest = selected.join(', ');
+    addUserMessage(`관심 분야: ${pendingInterest}`);
+    // 항상 추천용 Profile 카드를 표시 (기존값 prefill)
+    addBotMessage("추천에 사용할 조건을 확인해주세요.\n기존 정보가 있으면 미리 채워져 있어요.");
+    showRecommendProfileCard();
+}
+
+function showCardError(card, msg) {
+    let err = card.querySelector('.card-error');
+    if (!err) {
+        err = document.createElement('div');
+        err.className = 'card-error';
+        err.style.cssText = 'color:#c0392b;font-size:12px;margin-top:8px;';
+        card.appendChild(err);
+    }
+    err.textContent = msg;
+}
+
+// === 추천용 Profile 카드 (기존값 prefill) ===
+function showRecommendProfileCard() {
+    pcSelections = {};
+    // 서버 profile로 prefill
+    if (serverProfile) {
+        ['age','residency','employment','student','startup','housing','marriage'].forEach(f => {
+            if (serverProfile[f] !== null && serverProfile[f] !== undefined) {
+                pcSelections[f] = String(serverProfile[f]);
+            }
+        });
+    }
+
+    const container = document.getElementById('chatMessages');
+    const card = document.createElement('div');
+    card.className = 'chat-card';
+    card.dataset.cardType = 'recommend-profile';
+
+    const fields = [
+        {field:'residency', label:'남양주시 거주', options:['예','아니오']},
+        {field:'employment', label:'고용 상태', options:['취업','미취업']},
+        {field:'student', label:'학생 여부', options:['고등학생','대학생','대학원생','해당하지 않음']},
+        {field:'startup', label:'창업 여부', options:['창업 중','창업 준비 중','창업하지 않음']},
+        {field:'housing', label:'주택 보유', options:['주택 소유','무주택']},
+        {field:'marriage', label:'결혼 여부', options:['미혼','기혼']},
+    ];
+
+    const ageVal = pcSelections.age || '';
+    const interestLabel = pendingInterest && pendingInterest.trim() ? pendingInterest.trim() : '전체';
+    let html = `
+        <div class="chat-card-title">🎯 추천 조건 확인</div>
+        <div style="font-size:13px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:9px 11px;margin-bottom:12px;">
+            📌 관심 분야: <strong>${escapeHtml(interestLabel)}</strong>
+        </div>
+        <div class="pc-field">
+            <div class="pc-label">만 나이</div>
+            <div class="pc-age-box">
+                <button type="button" class="pc-step" onclick="stepAge(this,-1)">−</button>
+                <input type="number" id="pc_age" min="15" max="45" placeholder="나이" value="${ageVal}" oninput="pcSelections.age=this.value">
+                <button type="button" class="pc-step" onclick="stepAge(this,1)">+</button>
+            </div>
+        </div>
+    `;
+    fields.forEach(f => {
+        html += `
+            <div class="pc-field">
+                <div class="pc-label">${f.label}</div>
+                <div class="pc-chips">
+                    ${f.options.map(o => {
+                        const active = pcSelections[f.field] === o ? ' active' : '';
+                        return `<button type="button" class="pc-chip${active}" data-field="${f.field}" data-value="${o}" onclick="selectChip(this)">${o}</button>`;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    });
+    html += `
+        <button class="chat-card-btn" style="background:#7c3aed;" onclick="submitRecommendProfile(this)">이 조건으로 추천받기</button>
+        <button class="chat-card-btn" style="background:#eee;color:#1a5276;margin-top:6px;" onclick="exploreWithoutProfile(this)">조건 없이 찾아보기</button>
+    `;
+    card.innerHTML = html;
+    container.appendChild(card);
+    scrollToBottom();
+}
+
+async function submitRecommendProfile(btn) {
+    const card = btn.closest('.chat-card');
+    const profile = {};
+    if (pcSelections.age) profile.age = parseInt(pcSelections.age);
+    ['residency','employment','student','startup','housing','marriage'].forEach(f => {
+        if (pcSelections[f]) profile[f] = pcSelections[f];
+    });
+
+    // 필수 항목 검증 (7개 전부)
+    const required = ['age','residency','employment','student','startup','housing','marriage'];
+    const missing = required.filter(f => !profile[f]);
+    if (missing.length > 0) {
+        const labels = {age:'만 나이', residency:'남양주시 거주', employment:'고용 상태',
+                        student:'학생 여부', startup:'창업 여부', housing:'주택 보유', marriage:'결혼 여부'};
+        showCardError(card, '다음 항목을 선택해주세요: ' + missing.map(f => labels[f]).join(', '));
+        return;
+    }
+
+    card.querySelectorAll('button, input').forEach(el => el.disabled = true);
+    card.style.opacity = '0.6';
+    addUserMessage('이 조건으로 추천받기');
+    showTyping();
+    isWaiting = true;
+
+    try {
+        const res = await apiFetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: SESSION_ID,
+                message: '',
+                ui_event: 'SUBMIT_RECOMMEND_PROFILE',
+                profile: profile,
+                interest: pendingInterest,
+                action: {
+                    action: 'NORMAL',
+                    tasks: ['RECOMMEND'],
+                    topic: pendingInterest,
+                    use_previous_context: false,
+                    explore_without_profile: false,
+                    resume_multi_workflow: resumeMultiWorkflowOnRecommendProfile,
+                    confidence: 'high',
+                },
+            }),
+        });
+        const data = await res.json();
+        hideTyping();
+        const st = data.state || {};
+        if (st.profile) serverProfile = st.profile;
+        // 멀티쿼리는 추천 제출 뒤 ELIGIBILITY 등 다음 Clarify로 이어질 수 있으므로
+        // 말풍선만 그리지 말고 공통 State→카드 렌더러를 반드시 사용한다.
+        renderResponseWithCard(data);
+        resumeMultiWorkflowOnRecommendProfile = false;
+    } catch(e) { hideTyping(); addBotMessage("오류가 발생했어요. 다시 시도해주세요."); }
+    isWaiting = false;
+    document.getElementById('sendBtn').disabled = false;
+}
+
+function reopenRecommendProfile(btn) {
+    if (btn) btn.disabled = true;
+    // 결과 카드에서 다시 설정한 경우에만 완료된 멀티쿼리 Atomic 계약을 재사용한다.
+    resumeMultiWorkflowOnRecommendProfile = true;
+    deactivateAllCards();
+    addBotMessage('현재 관심 분야는 유지하고 추천 조건을 다시 확인해주세요. 기존 프로필 값이 미리 선택되어 있어요.');
+    showRecommendProfileCard();
+}
+
+async function exploreWithoutProfile(btn) {
+    const card = btn.closest('.chat-card');
+    card.querySelectorAll('button, input').forEach(el => el.disabled = true);
+    card.style.opacity = '0.6';
+    addUserMessage('조건 없이 찾아보기');
+    showTyping();
+    isWaiting = true;
+    try {
+        const res = await apiFetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: SESSION_ID,
+                message: `조건 없이 ${pendingInterest} 추천해줘`,
+                ui_event: 'SUBMIT_RECOMMEND_PROFILE',
+                interest: pendingInterest,
+                action: {
+                    action: 'NORMAL',
+                    tasks: ['RECOMMEND'],
+                    topic: pendingInterest,
+                    use_previous_context: false,
+                    explore_without_profile: true,
+                    confidence: 'high',
+                },
+            }),
+        });
+        const data = await res.json();
+        hideTyping();
+        if (data.state && data.state.profile) serverProfile = data.state.profile;
+        renderResponseWithCard(data);
+    } catch(e) { hideTyping(); addBotMessage("오류가 발생했어요. 다시 시도해주세요."); }
+    isWaiting = false;
+    document.getElementById('sendBtn').disabled = false;
+}
+
+function onInterestSelected(btn, interest) {
+    // showInterestCardsInChat에서 사용 (단일 선택용 - Clarify에서)
+    btn.closest('.interest-grid').querySelectorAll('.interest-btn').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
+    btn.style.opacity = '1'; btn.style.background = '#1a5276'; btn.style.color = 'white';
+    dispatchAction({
+        action: 'NORMAL',
+        tasks: ['RECOMMEND'],
+        topic: interest,
+        use_previous_context: false,
+        confidence: 'high',
+    }, `${interest} 분야 정책 추천해줘`);
+}
+
+// === 자격확인 버튼 (UNKNOWN 정책에서) ===
+function checkEligibility(policyId, policyName) {
+    return dispatchAction({
+        action: 'NORMAL',
+        tasks: ['ELIGIBILITY'],
+        policy_id: policyId,
+        policy_mention: policyName,
+        use_previous_context: false,
+        confidence: 'high',
+    }, `${policyName} 자격 확인해줘`);
+}
+
+function showAlternatives() {
+    return dispatchAction({
+        action: 'SHOW_ALTERNATIVES',
+        // 추천을 즉시 다시 실행하지 않고 정책 알아보기와 같은 선택 카드로 전환한다.
+        tasks: ['EXPLAIN'],
+        use_previous_context: false,
+        confidence: 'high',
+    }, '다른 정책 보기');
+}
+
+function dispatchAction(action, displayText) {
+    return sendMessage(displayText, action);
+}
+
+// 어떤 입력 경로로 API를 호출했든 동일한 State→카드 계약을 적용한다.
+// active_clarify가 있으면 말풍선만 표시하고 흐름을 끊지 않는다.
+function renderResponseWithCard(data) {
+    const st = data.state || {};
+    const command = data.ui_command;
+    if (st.profile) serverProfile = st.profile;
+
+    if (command && command.type) {
+        isWaiting = false;
+        document.getElementById('sendBtn').disabled = false;
+        if (command.type === 'START_EXPLAIN') { startExplain(); return; }
+        if (command.type === 'START_RECOMMEND') { startRecommend(); return; }
+        if (command.type === 'START_ELIGIBILITY') { startEligibility(); return; }
+        if (command.type === 'RESET_CHAT') {
+            document.getElementById('chatMessages').innerHTML = '';
+            pendingInterest = '';
+            lastMissingFields = null;
+            lastEligibilityPolicyId = null;
+            lastEligibilityPolicyName = '';
+            lastEligibilityFields = [];
+            profileResumePolicyId = null;
+            serverProfile = st.profile || {};
+            addBotMessage(data.response || '대화가 초기화되었어요. 아래 버튼을 눌러보세요!');
+            return;
+        }
+        if (command.type === 'RESET_PROFILE') {
+            deactivateAllCards();
+            if (command.policy_id) {
+                lastEligibilityPolicyId = command.policy_id;
+                profileResumePolicyId = command.policy_id;
+            }
+            if (Array.isArray(command.fields)) {
+                lastEligibilityFields = [...command.fields];
+                lastMissingFields = [...command.fields];
+            }
+            if (data.response) addBotMessage(data.response);
+            showProfileCard(Array.isArray(command.fields) && command.fields.length ? command.fields : undefined);
+            return;
+        }
+    }
+    if (st.eligibility_policy_id) {
+        lastEligibilityPolicyId = st.eligibility_policy_id;
+    }
+    if (st.eligibility_policy_name) {
+        lastEligibilityPolicyName = st.eligibility_policy_name;
+    }
+    if (Array.isArray(st.eligibility_profile_fields) && st.eligibility_profile_fields.length > 0) {
+        lastEligibilityFields = [...st.eligibility_profile_fields];
+    }
+    if (st.active_clarify === 'CLARIFY_PROFILE') {
+        const missing = st.missing_fields || [];
+        const pending = st.pending_tasks || [];
+        addBotMessage(data.response || "추가 정보가 필요해요.");
+        if (pending.includes('RECOMMEND')) {
+            showRecommendProfileCard();
+        } else {
+            showProfileCard(missing.length > 0 ? missing : undefined);
+        }
+    } else if (st.active_clarify === 'CLARIFY_PREFERENCE') {
+        addBotMessage(data.response || "어떤 분야에 관심이 있으세요?");
+        showInterestCardsInChat();
+    } else if (st.active_clarify === 'CLARIFY_POLICY') {
+        addBotMessage(data.response || "어떤 정책을 선택하시겠어요?");
+        showPolicyCardInChat(st.policy_candidates);
+    } else if (st.active_clarify === 'CLARIFY_ADDITIONAL') {
+        const aq = st.additional_question;
+        addBotMessage(data.response || "추가 자격 정보를 입력해주세요.");
+        if (aq && aq.questions && aq.questions.length > 0) {
+            showAdditionalQuestionCard(aq);
+        }
+    } else {
+        addBotMessage(data.response);
+    }
+}
+
+// === 메시지 전송: 자연어와 버튼은 같은 API/렌더링 경로 ===
+async function sendMessage(overrideText, actionPayload = null) {
+    const input = document.getElementById('chatInput');
+    const text = overrideText || input.value.trim();
+    if (!text) return;
+    if (isWaiting) return;
+
+    addUserMessage(text);
+    input.value = '';
+    input.style.height = 'auto';
+    isWaiting = true;
+    document.getElementById('sendBtn').disabled = true;
+    showTyping();
+
+    try {
+        const res = await apiFetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: SESSION_ID,
+                message: text,
+                ...(actionPayload ? { action: actionPayload } : {}),
+            }),
+        });
+        const data = await res.json();
+        hideTyping();
+        const st = data.state || {};
+        if (st.profile) serverProfile = st.profile;
+        // 자연어 추천에서 서버가 구조화한 최신 관심분야를
+        // 프로필 카드의 '조건 없이 찾아보기' 버튼에 연결한다.
+        // 이값을 갱신하지 않으면 이전 대화의 복수 분야가 재사용된다.
+        if (typeof st.interest_query === 'string' && st.interest_query.trim()) {
+            pendingInterest = st.interest_query.trim();
+        }
+        
+        // 만 나이 확인은 기존 Clarify 위에 잠시 올라오는 질문이다.
+        // 확인이 끝나기 전에는 이전 정책/프로필 카드를 중복으로 다시 그리지 않는다.
+        const isAgeConfirmation = st.pending_age_confirmation !== null
+            && st.pending_age_confirmation !== undefined;
+        if (isAgeConfirmation) {
+            addBotMessage(data.response);
+        } else {
+            renderResponseWithCard(data);
+        }
+    } catch(e) {
+        hideTyping();
+        addBotMessage("서버 연결에 문제가 발생했어요. 잠시 후 다시 시도해주세요.");
+    }
+
+    isWaiting = false;
+    document.getElementById('sendBtn').disabled = false;
+}
+
+// === 프로필 ===
+window.serverProfile = {}; // 서버가 반환한 현재 profile 캐시 + 자동 테스트 훅
+
+function openProfile() {
+    // 기존 값 미리 선택
+    if (serverProfile.age) document.getElementById('profAge').value = String(serverProfile.age);
+    if (serverProfile.residency) document.getElementById('profResidency').value = serverProfile.residency;
+    if (serverProfile.employment) document.getElementById('profEmployment').value = serverProfile.employment;
+    if (serverProfile.student) document.getElementById('profStudent').value = serverProfile.student;
+    if (serverProfile.startup) document.getElementById('profStartup').value = serverProfile.startup;
+    if (serverProfile.housing) document.getElementById('profHousing').value = serverProfile.housing;
+    if (serverProfile.marriage) document.getElementById('profMarriage').value = serverProfile.marriage;
+    document.getElementById('profileModal').classList.add('active');
+}
+function closeProfile() { document.getElementById('profileModal').classList.remove('active'); }
+
+async function submitProfile() {
+    const ageVal = document.getElementById('profAge').value;
+    const profile = {
+        age: ageVal ? parseInt(ageVal) : null,
+        residency: document.getElementById('profResidency').value || null,
+        employment: document.getElementById('profEmployment').value || null,
+        student: document.getElementById('profStudent').value || null,
+        startup: document.getElementById('profStartup').value || null,
+        housing: document.getElementById('profHousing').value || null,
+        marriage: document.getElementById('profMarriage').value || null,
+    };
+    const filtered = {};
+    for (const [k,v] of Object.entries(profile)) { if(v !== null && v !== '') filtered[k] = v; }
+    if (Object.keys(filtered).length === 0) { closeProfile(); return; }
+
+    closeProfile();
+    addUserMessage('프로필 설정 완료');
+    showTyping();
+    isWaiting = true;
+
+    try {
+        const res = await apiFetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: SESSION_ID, message: '프로필 설정 완료', profile: filtered }),
+        });
+        const data = await res.json();
+        hideTyping();
+        addBotMessage("프로필이 업데이트되었어요! 정책 추천이나 자격 확인을 해볼까요?");
+    } catch(e) { hideTyping(); addBotMessage("프로필 저장 중 오류가 발생했어요."); }
+    isWaiting = false;
+    document.getElementById('sendBtn').disabled = false;
+}
+
+// === State 기반 카드 UI 함수들 ===
+// 프로필 임시 저장소 (칩 버튼 선택값)
+let pcSelections = {};
+let resumeMultiWorkflowOnRecommendProfile = false;
+
+function makeChipRow(field, label, options) {
+    return `
+        <div class="pc-field">
+            <div class="pc-label">${label}</div>
+            <div class="pc-chips">
+                ${options.map(o => `<button type="button" class="pc-chip" data-field="${field}" data-value="${o}" onclick="selectChip(this)">${o}</button>`).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function selectChip(btn) {
+    const field = btn.dataset.field;
+    const value = btn.dataset.value;
+    btn.closest('.pc-chips').querySelectorAll('.pc-chip').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    pcSelections[field] = value;
+}
+
+async function autoSubmitEligibilityCard(card) {
+    const profile = {};
+    if (pcSelections.age) profile.age = parseInt(pcSelections.age);
+    ['residency','employment','student','startup','housing','marriage'].forEach(f => {
+        if (pcSelections[f]) profile[f] = pcSelections[f];
+    });
+    
+    // 거주 조건은 정책별로 다르므로 화면에서 일괄 차단하지 않는다.
+    // 남양주시 필수 정책은 서버 규칙이 FAIL로 판정하고, 경기도 범위
+    // 정책은 별도 추가 질문으로 정확히 확인한다.
+    card.querySelectorAll('button, input').forEach(el => el.disabled = true);
+    card.style.opacity = '0.7';
+    addUserMessage('프로필 입력 완료');
+    showTyping();
+    isWaiting = true;
+    
+    try {
+        const res = await apiFetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: SESSION_ID,
+                message: '',
+                ui_event: 'SUBMIT_PROFILE',
+                profile: profile,
+                action: profileResumePolicyId ? {
+                    action: 'FOLLOW_UP',
+                    tasks: ['ELIGIBILITY'],
+                    policy_id: profileResumePolicyId,
+                    use_previous_context: true,
+                    confidence: 'high',
+                } : null,
+            }),
+        });
+        const data = await res.json();
+        hideTyping();
+        const st = data.state || {};
+        if (st.profile) serverProfile = st.profile;
+        if (typeof st.interest_query === 'string' && st.interest_query.trim()) {
+            pendingInterest = st.interest_query.trim();
+        }
+        renderResponseWithCard(data);
+        profileResumePolicyId = null;
+    } catch(e) { hideTyping(); addBotMessage("오류가 발생했어요."); }
+    isWaiting = false;
+    document.getElementById('sendBtn').disabled = false;
+}
+
+function showProfileCard(onlyFields) {
+    pcSelections = {};
+    lastMissingFields = onlyFields || null;
+    const container = document.getElementById('chatMessages');
+    const card = document.createElement('div');
+    card.className = 'chat-card';
+
+    const allFields = [
+        {field:'age', label:'만 나이', type:'age'},
+        {field:'residency', label:'남양주시 거주', options:['예','아니오']},
+        {field:'employment', label:'고용 상태', options:['취업','미취업']},
+        {field:'student', label:'학생 여부', options:['고등학생','대학생','대학원생','해당하지 않음']},
+        {field:'startup', label:'창업 여부', options:['창업 중','창업 준비 중','창업하지 않음']},
+        {field:'housing', label:'주택 보유', options:['주택 소유','무주택']},
+        {field:'marriage', label:'결혼 여부', options:['미혼','기혼']},
+    ];
+
+    // onlyFields가 있으면 해당 필드만, 없으면 전체
+    const fields = onlyFields && onlyFields.length > 0
+        ? allFields.filter(f => onlyFields.includes(f.field))
+        : allFields;
+
+    const isPartial = onlyFields && onlyFields.length > 0;
+    const title = isPartial ? '👤 필요 정보 입력' : '👤 프로필 입력 (선택 항목만 채워도 돼요)';
+
+    let fieldsHtml = '';
+    for (const f of fields) {
+        if (f.type === 'age') {
+            fieldsHtml += `
+                <div class="pc-field">
+                    <div class="pc-label">${f.label}</div>
+                    <div class="pc-age-box">
+                        <button type="button" class="pc-step" onclick="stepAge(this,-1)">−</button>
+                        <input type="number" id="pc_age" min="15" max="45" placeholder="나이" oninput="pcSelections.age=this.value">
+                        <button type="button" class="pc-step" onclick="stepAge(this,1)">+</button>
+                    </div>
+                </div>`;
+        } else {
+            fieldsHtml += makeChipRow(f.field, f.label, f.options);
+        }
+    }
+
+    const eligibilityContext = isPartial && lastEligibilityPolicyName
+        ? `<div style="font-size:13px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:9px 11px;margin-bottom:12px;">✅ 선택 정책: <strong>${escapeHtml(lastEligibilityPolicyName)}</strong></div>`
+        : '';
+
+    card.innerHTML = `
+        <div class="chat-card-title">${title}</div>
+        ${eligibilityContext}
+        ${fieldsHtml}
+        ${!isPartial ? '<button class="chat-card-btn" onclick="submitProfileCard(this)">입력 완료</button>' : '<div style="display:flex;gap:8px;margin-top:10px;"><button class="chat-card-btn" style="background:#7c3aed;flex:1;" onclick="manualSubmitEligibility(this)">완료</button><button class="chat-card-btn" style="background:#f8f8f8;color:#666;border:1px solid #ddd;flex:1;" onclick="resetAndShowFullCard(this)">프로필 다시 입력</button></div>'}
+        ${!isPartial ? '<button class="chat-card-btn" style="background:#eee;color:#1a5276;margin-top:6px;" onclick="skipProfile(this)">조건 없이 추천받기</button>' : ''}
+    `;
+    container.appendChild(card);
+
+    // 재설정 시 현재 서버 프로필을 미리 채워 수정할 값만 바꿀 수 있게 한다.
+    for (const f of fields) {
+        const value = serverProfile ? serverProfile[f.field] : null;
+        if (value === null || value === undefined || value === '') continue;
+        if (f.type === 'age') {
+            const ageInput = card.querySelector('input[type="number"]');
+            if (ageInput) {
+                ageInput.value = String(value);
+                pcSelections.age = String(value);
+            }
+        } else {
+            const chip = Array.from(card.querySelectorAll(`.pc-chip[data-field="${f.field}"]`))
+                .find(el => el.dataset.value === String(value));
+            if (chip) {
+                chip.classList.add('active');
+                pcSelections[f.field] = String(value);
+            }
+        }
+    }
+    scrollToBottom();
+}
+
+function stepAge(btn, delta) {
+    const card = btn.closest('.chat-card');
+    const inp = card ? card.querySelector('input[type="number"]') : null;
+    if (!inp) return;
+    let v = parseInt(inp.value) || 19;
+    v = Math.min(45, Math.max(15, v + delta));
+    inp.value = v;
+    pcSelections.age = String(v);
+}
+
+async function submitProfileCard(btn) {
+    const card = btn.closest('.chat-card');
+    const profile = {};
+    if (pcSelections.age) profile.age = parseInt(pcSelections.age);
+    ['residency','employment','student','startup','housing','marriage'].forEach(f => {
+        if (pcSelections[f]) profile[f] = pcSelections[f];
+    });
+    if (Object.keys(profile).length === 0) return;
+
+    card.querySelectorAll('button, input').forEach(el => el.disabled = true);
+    addUserMessage('프로필 입력 완료');
+
+    // ELIGIBILITY vs RECOMMEND 구분: 조건없이 버튼이 없으면 ELIGIBILITY
+    const isEligibility = !card.querySelector('[onclick*="skipProfile"]');
+    
+    if (isEligibility) {
+        // 자격확인: 모든 표시된 필드가 채워졌는지 확인
+        const fieldCount = card.querySelectorAll('.pc-field').length;
+        const filledCount = Object.keys(profile).length;
+        if (filledCount < fieldCount) {
+            showCardError(card, '모든 항목을 입력해주세요.');
+            btn.disabled = false;
+            card.querySelectorAll('button, input').forEach(el => el.disabled = false);
+            return;
+        }
+        // 프로필만 보내고 원래 pending task(ELIGIBILITY) 유지
+        showTyping();
+        isWaiting = true;
+        try {
+            const res = await apiFetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: SESSION_ID, message: '', ui_event: 'SUBMIT_PROFILE', profile: profile }),
+            });
+            const data = await res.json();
+            hideTyping();
+            const st = data.state || {};
+            if (st.profile) serverProfile = st.profile;
+            renderResponseWithCard(data);
+        } catch(e) { hideTyping(); addBotMessage("오류가 발생했어요."); }
+        isWaiting = false;
+        document.getElementById('sendBtn').disabled = false;
+    } else {
+        // 맞춤추천
+        await postProfileAndRecommend(profile);
+    }
+}
+
+async function skipProfile(btn) {
+    const card = btn.closest('.chat-card');
+    card.querySelectorAll('button, input').forEach(el => el.disabled = true);
+    addUserMessage('조건 없이 추천받을게요');
+    await postProfileAndRecommend({}, true);
+}
+
+async function postProfileAndRecommend(profile, skip) {
+    showTyping();
+    isWaiting = true;
+    try {
+        // 프로필과 함께 추천 요청을 명시적으로 보냄
+        const activeInterest = pendingInterest && pendingInterest.trim() ? pendingInterest.trim() : '전체';
+        const message = skip ? `조건 없이 ${activeInterest} 추천해줘` : '프로필 입력 완료, 맞춤 추천해줘';
+        const payload = {
+            session_id: SESSION_ID,
+            message: message,
+            ui_event: 'SUBMIT_RECOMMEND_PROFILE',
+            interest: activeInterest,
+            action: {
+                action: 'NORMAL',
+                tasks: ['RECOMMEND'],
+                topic: activeInterest,
+                use_previous_context: false,
+                explore_without_profile: skip,
+                confidence: 'high',
+            },
+        };
+        if (Object.keys(profile).length > 0) payload.profile = profile;
+        const res = await apiFetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        hideTyping();
+        const st = data.state || {};
+        if (st.profile) serverProfile = st.profile;
+        if (typeof st.interest_query === 'string' && st.interest_query.trim()) {
+            pendingInterest = st.interest_query.trim();
+        }
+        renderResponseWithCard(data);
+    } catch(e) { hideTyping(); addBotMessage("오류가 발생했어요."); }
+    isWaiting = false;
+    document.getElementById('sendBtn').disabled = false;
+}
+
+function showInterestCardsInChat() {
+    const container = document.getElementById('chatMessages');
+    const card = document.createElement('div');
+    card.className = 'chat-card';
+    const interests = ['취업', '주거', '창업', '교육', '복지', '참여·문화', '기본소득', '농업', '전체'];
+    card.innerHTML = `
+        <div class="chat-card-title">🎯 관심 분야 선택</div>
+        <div class="interest-grid">
+            ${interests.map(i => `<button class="interest-btn" data-interest="${i}" onclick="onInterestSelected(this, '${i}')">${i}</button>`).join('')}
+        </div>
+    `;
+    container.appendChild(card);
+    scrollToBottom();
+}
+
+function showPolicyCardInChat(candidates) {
+    const container = document.getElementById('chatMessages');
+    const card = document.createElement('div');
+    card.className = 'chat-card';
+    // 후보가 있으면 후보만, 없으면 자격확인 대상 전체
+    const list = (candidates && candidates.length > 0) ? candidates : eligibilityPoliciesList;
+    card.innerHTML = `
+        <div class="chat-card-title">📋 정책 선택</div>
+        <select id="policySelect_clarify">
+            <option value="">정책을 선택하세요</option>
+            ${list.map(p => `<option value="${p.policy_name}">${p.policy_name}</option>`).join('')}
+        </select>
+        <button class="chat-card-btn" onclick="onClarifyPolicySelected(this)">선택 완료</button>
+    `;
+    container.appendChild(card);
+    scrollToBottom();
+}
+
+function onClarifyPolicySelected(btn) {
+    const select = btn.previousElementSibling;
+    const policyName = select.value;
+    if (!policyName) return;
+    btn.disabled = true;
+    select.disabled = true;
+    sendMessage(policyName);
+}
+
+function showAdditionalQuestionCard(aq) {
+    aqSelections = {};
+    currentAqPolicyId = aq.policy_id || null;
+    const policyName = aq.policy_name || lastEligibilityPolicyName || '';
+    if (policyName) lastEligibilityPolicyName = policyName;
+    const container = document.getElementById('chatMessages');
+    const card = document.createElement('div');
+    card.className = 'chat-card';
+    
+    const questions = aq.questions || [];
+    const total = aq.total || questions.length;
+    const batchStart = aq.batch_start || (questions[0] && questions[0].q_num) || 1;
+    const batchEnd = aq.batch_end || (
+        questions.length ? batchStart + questions.length - 1 : batchStart
+    );
+    const remaining = Number.isFinite(aq.remaining) ? aq.remaining : questions.length;
+    const submitLabel = batchEnd < total
+        ? '답변 제출하고 다음 질문'
+        : '답변 제출하고 결과 보기';
+    
+    let questionsHtml = '';
+    questions.forEach((q, idx) => {
+        const answerControl = q.options && q.options.length > 0
+            ? `<div class="pc-chips">${q.options.map(o => `<button class="pc-chip" data-qid="${q.question_id}" data-answer="${o}" onclick="selectAqChip(this)">${o}</button>`).join('')}</div>`
+            : `<input class="aq-text-input" type="${q.question_id === 'birth_date' ? 'date' : 'text'}" data-qid="${q.question_id}" aria-label="${q.question}" oninput="setAqText(this)" placeholder="직접 입력해주세요">`;
+        questionsHtml += `
+            <div class="pc-field">
+                <div class="pc-label">Q${q.q_num || idx+1}. ${q.question}</div>
+                ${answerControl}
+            </div>
+        `;
+    });
+
+    const policyContext = policyName
+        ? `<div style="font-size:13px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 11px;margin-bottom:10px;">✅ 선택 정책: <strong>${escapeHtml(policyName)}</strong></div>`
+        : '';
+    card.innerHTML = `
+        <div class="chat-card-title">📝 추가 자격 조건 확인</div>
+        ${policyContext}
+        <div class="aq-action-row">
+            <button type="button" class="aq-action-btn" onclick="resetAndShowFullCard('${aq.policy_id || ''}', this)">프로필 다시 설정하기</button>
+            <button type="button" class="aq-action-btn" onclick="startEligibility()">다른 정책 선택</button>
+        </div>
+        <div style="font-size:13px;color:#64748b;margin:2px 0 12px;">
+            전체 ${total}개 중 ${batchStart}~${batchEnd}번 · ${remaining}개 남음
+        </div>
+        ${questionsHtml}
+        <button class="chat-card-btn" style="background:#7c3aed;margin-top:10px;" onclick="confirmAdditionalQs(this)">${submitLabel}</button>
+    `;
+    container.appendChild(card);
+    scrollToBottom();
+}
+
+let aqSelections = {};
+let currentAqPolicyId = null;
+
+function selectAqChip(btn) {
+    const qid = btn.dataset.qid;
+    const answer = btn.dataset.answer;
+    // 같은 질문의 다른 칩 해제
+    btn.closest('.pc-chips').querySelectorAll('.pc-chip').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    aqSelections[qid] = answer;
+}
+
+function setAqText(input) {
+    const value = input.value.trim();
+    if (value) aqSelections[input.dataset.qid] = value;
+    else delete aqSelections[input.dataset.qid];
+}
+
+async function confirmAdditionalQs(btn) {
+    const card = btn.closest('.chat-card');
+    const questions = card.querySelectorAll('.pc-field');
+    
+    // 모든 질문에 답했는지 확인
+    let allAnswered = true;
+    questions.forEach(q => {
+        const chipAnswered = !!q.querySelector('.pc-chip.active');
+        const textInput = q.querySelector('.aq-text-input');
+        const textAnswered = !!(textInput && textInput.value.trim());
+        if (!chipAnswered && !textAnswered) allAnswered = false;
+    });
+    if (!allAnswered) {
+        showCardError(card, '모든 질문에 답변해주세요.');
+        return;
+    }
+    
+    card.querySelectorAll('button, input').forEach(el => el.disabled = true);
+    card.style.opacity = '0.7';
+    
+    // 구조화 이벤트로 전송
+    addUserMessage('추가 질문 답변 완료');
+    showTyping();
+    isWaiting = true;
+    
+    try {
+        const res = await apiFetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: SESSION_ID,
+                message: '',
+                ui_event: 'SUBMIT_ADDITIONAL_ANSWERS',
+                policy_id: currentAqPolicyId,
+                answers: aqSelections,
+            }),
+        });
+        const data = await res.json();
+        hideTyping();
+        const st = data.state || {};
+        if (st.profile) serverProfile = st.profile;
+        if (st.active_clarify === 'CLARIFY_ADDITIONAL') {
+            const nextAq = st.additional_question;
+            if (nextAq && nextAq.questions) {
+                addBotMessage(data.response);
+                showAdditionalQuestionCard(nextAq);
+            } else {
+                addBotMessage(data.response);
+            }
+        } else {
+            addBotMessage(data.response);
+        }
+    } catch(e) { hideTyping(); addBotMessage("오류가 발생했어요."); }
+    isWaiting = false;
+    aqSelections = {};
+    document.getElementById('sendBtn').disabled = false;
+}
+
+async function editAdditionalAnswers(policyId, btn) {
+    if (isWaiting) return;
+    btn.disabled = true;
+    showTyping();
+    isWaiting = true;
+    document.getElementById('sendBtn').disabled = true;
+
+    try {
+        const res = await apiFetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: SESSION_ID,
+                message: '',
+                ui_event: 'EDIT_ADDITIONAL_ANSWERS',
+                policy_id: policyId,
+            }),
+        });
+        const data = await res.json();
+        renderResponseWithCard(data);
+    } catch (e) {
+        addBotMessage(
+            e && e.name === 'AbortError'
+                ? '응답 시간이 길어 요청을 종료했어요. 다시 시도해주세요.'
+                : '추가 답변을 다시 불러오지 못했어요. 잠시 후 다시 시도해주세요.'
+        );
+        btn.disabled = false;
+    } finally {
+        hideTyping();
+        isWaiting = false;
+        document.getElementById('sendBtn').disabled = false;
+    }
+}
+
+function resetAndShowFullCard(policyIdOrBtn, maybeBtn) {
+    const hasPolicyId = typeof policyIdOrBtn === 'string';
+    const btn = hasPolicyId ? maybeBtn : policyIdOrBtn;
+    const card = btn.closest('.chat-card');
+    if (card) {
+        card.querySelectorAll('button, input').forEach(el => el.disabled = true);
+        card.style.opacity = '0.5';
+    } else {
+        btn.disabled = true;
+    }
+    profileResumePolicyId = hasPolicyId ? policyIdOrBtn : lastEligibilityPolicyId;
+    const fields = lastEligibilityFields && lastEligibilityFields.length > 0
+        ? lastEligibilityFields
+        : (lastMissingFields || undefined);
+    addBotMessage("직전 정책의 자격을 다시 확인할 수 있도록 프로필을 수정해주세요.");
+    // 이미 입력된 값도 바꿀 수 있도록 '누락 항목'이 아니라 현재 정책이
+    // 실제 판정에 사용하는 기본 Profile 필드 전체를 다시 표시한다.
+    showProfileCard(fields);
+}
+
+// 마지막으로 표시한 missing_fields 저장
+let lastMissingFields = null;
+let lastEligibilityPolicyId = null;
+let lastEligibilityPolicyName = '';
+let lastEligibilityFields = [];
+let profileResumePolicyId = null;
+
+async function manualSubmitEligibility(btn) {
+    const card = btn.closest('.chat-card');
+    // 모든 필드가 채워졌는지 확인
+    const totalFields = card.querySelectorAll('.pc-field').length;
+    let filledCount = 0;
+    card.querySelectorAll('.pc-field').forEach(f => {
+        const ageInput = f.querySelector('input[type="number"]');
+        if (ageInput) {
+            if (ageInput.value) filledCount++;
+        } else {
+            if (f.querySelector('.pc-chip.active')) filledCount++;
+        }
+    });
+    if (filledCount < totalFields) {
+        showCardError(card, '모든 항목을 입력해주세요.');
+        return;
+    }
+    autoSubmitEligibilityCard(card);
+}
+
+// === 초기화 ===
+async function resetChat() {
+    if (!confirm('대화를 초기화할까요?')) return;
+    try { await apiFetch('/api/reset', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({session_id:SESSION_ID}) }); } catch(e){}
+    document.getElementById('chatMessages').innerHTML = '';
+    addBotMessage("대화가 초기화되었어요. 아래 버튼을 눌러보세요!");
+}
+
+// 서비스 소개 페이지에서 들어온 경우 시작 화면을 한 번 더 누르지 않고 상담을 시작한다.
+if (new URLSearchParams(window.location.search).get('start') === '1') {
+    startChat();
+}
