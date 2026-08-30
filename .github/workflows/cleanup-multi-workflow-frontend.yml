@@ -1,0 +1,35 @@
+name: Cleanup multi-workflow frontend diff
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  cleanup:
+    if: github.head_ref == 'fix/multi-workflow-resume'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/multi-workflow-resume
+          fetch-depth: 0
+      - name: Refresh main
+        run: git fetch origin main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Restore CRLF and reapply minimal frontend changes
+        run: python tools/cleanup_multi_workflow_frontend.py
+      - name: Frontend syntax check
+        run: |
+          python -c "from pathlib import Path; html=Path('static/index.html').read_text(encoding='utf-8'); script=html.rsplit('<script>', 1)[1].split('</script>', 1)[0]; Path('frontend-inline.js').write_text(script, encoding='utf-8')"
+          node --check frontend-inline.js
+      - name: Remove temporary cleanup files
+        run: rm tools/cleanup_multi_workflow_frontend.py .github/workflows/cleanup-multi-workflow-frontend.yml
+      - name: Commit minimal frontend diff
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Keep multi-workflow frontend diff minimal"
+          git push
