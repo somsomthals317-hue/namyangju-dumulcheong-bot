@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import agent
@@ -7,6 +8,18 @@ from state import get_default_state
 
 
 BUNDLES = build_policy_bundles(load_summary_documents(), load_eligibility_rules())
+
+
+def full_profile():
+    return {
+        "age": 25,
+        "residency": "예",
+        "employment": "미취업",
+        "student": "대학생",
+        "startup": "창업하지 않음",
+        "housing": "무주택",
+        "marriage": "미혼",
+    }
 
 
 class FinalRoutingRegressionTests(unittest.TestCase):
@@ -21,6 +34,39 @@ class FinalRoutingRegressionTests(unittest.TestCase):
         self.assertEqual(action["tasks"], ["RECOMMEND"])
         self.assertEqual(action["topic"], "취업")
         self.assertFalse(action["use_previous_context"])
+
+    def test_full_turn_age_profile_and_new_recommendation_interrupts_additional_card(self):
+        state = get_default_state()
+        state["active_clarify"] = "CLARIFY_ADDITIONAL"
+        state["pending_tasks"] = ["ELIGIBILITY"]
+        state["current_policy_id"] = "NYJ-YOUTH-016"
+        state["focus_policy_id"] = "NYJ-YOUTH-016"
+        state["selected_policy_id"] = "NYJ-YOUTH-016"
+        state["active_workflow"] = {
+            "index": 0,
+            "steps": [{"action": "NORMAL", "task": "ELIGIBILITY", "policy_id": "NYJ-YOUTH-016"}],
+            "responses": [],
+        }
+        state["_active_additional_q"] = {
+            "policy_id": "NYJ-YOUTH-016",
+            "questions": [{"question_id": "dummy", "question": "dummy?", "options": ["예", "아니오"]}],
+        }
+
+        next_state, response = agent.handle_turn(
+            state,
+            "나 만 25세야 남양주 살아 미취업이야 취업 정책 추천해줘",
+            None,
+            BUNDLES,
+        )
+
+        self.assertEqual(next_state["profile"]["age"], 25)
+        self.assertEqual(next_state["profile"]["residency"], "예")
+        self.assertEqual(next_state["profile"]["employment"], "미취업")
+        self.assertEqual(next_state.get("interest_query"), "취업")
+        self.assertEqual(next_state.get("active_clarify"), "CLARIFY_PROFILE")
+        self.assertEqual(next_state.get("pending_tasks"), ["RECOMMEND"])
+        self.assertNotEqual(next_state.get("active_clarify"), "CLARIFY_ADDITIONAL")
+        self.assertIn("맞춤 추천", response)
 
     def test_all_structured_eligibility_policy_actions_never_become_explain(self):
         full = [b for b in BUNDLES if b.get("eligibility_mode") != "INFO_ONLY"]
@@ -55,6 +101,25 @@ class FinalRoutingRegressionTests(unittest.TestCase):
                 if steps:
                     self.assertTrue(all(step.get("task") != "EXPLAIN" for step in steps))
                 self.assertTrue(all(task != "EXPLAIN" for task in remaining_tasks))
+
+    def test_saved_profile_skips_redundant_eligibility_profile_card(self):
+        bundle = next(b for b in BUNDLES if b.get("policy_name") == "청년 주거급여")
+        state = get_default_state()
+        state["profile"].update(full_profile())
+        state["profile_status"] = "COMPLETE"
+        state["selected_policy_id"] = bundle["policy_id"]
+        state["focus_policy_id"] = bundle["policy_id"]
+
+        response = agent.run_eligibility(state, BUNDLES)
+
+        self.assertNotEqual(state.get("active_clarify"), "CLARIFY_PROFILE")
+        if bundle.get("additional_questions"):
+            self.assertEqual(state.get("active_clarify"), "CLARIFY_ADDITIONAL")
+            aq = state.get("_active_additional_q") or {}
+            self.assertEqual(aq.get("policy_id"), bundle["policy_id"])
+            self.assertEqual(aq.get("policy_name"), "청년 주거급여")
+            self.assertTrue(aq.get("questions"))
+            self.assertIn("추가 자격 조건", response)
 
     def test_housing_recommendation_ai_candidates_are_hard_gated_to_housing(self):
         state = get_default_state()
@@ -126,21 +191,39 @@ class FinalRoutingRegressionTests(unittest.TestCase):
         self.assertNotIn("RECOMMEND", next_state.get("last_tasks", []))
 
     def test_bare_menu_variants_are_defined_as_same_front_door(self):
-        from pathlib import Path
         text = Path("server.py").read_text(encoding="utf-8")
         for token in ["자격조회", "자격조회하자", "자격확인", "자격확인하자"]:
             self.assertIn(f'"{token}"', text)
         for token in ["정책보기", "정책알아보자", "맞춤추천", "맞춤추천하자"]:
             self.assertIn(f'"{token}"', text)
-        # Bare menu는 Prompt A보다 먼저 deterministic ui_command로 빠져야 한다.
         self.assertLess(text.index("simple_menu_type = ("), text.index("should_probe_intent = ("))
 
     def test_named_policy_request_is_not_bare_menu(self):
-        # 단순 명령 집합은 exact compact match만 사용해야 정책명이 붙은 문장을 가로채지 않는다.
-        from pathlib import Path
         text = Path("server.py").read_text(encoding="utf-8")
         self.assertIn("if compact in eligibility", text)
         self.assertNotIn('"청년월세지원사업자격조회"', text)
+
+    def test_server_eligibility_dropdown_is_exact_application_set(self):
+        text = Path("server.py").read_text(encoding="utf-8")
+        self.assertIn('bundle.get("eligibility_mode") != "INFO_ONLY"', text)
+        policies_block = text[text.index('def get_policies()'):]
+        self.assertNotIn('item["policy_id"].startswith("NYJ-YOUTH-")', policies_block)
+        self.assertIn('if item["policy_id"] in eligibility_ids', policies_block)
+
+    def test_frontend_cards_show_context_and_profile_reset_actions(self):
+        html = Path("static/index.html").read_text(encoding="utf-8")
+        self.assertIn("📌 관심 분야:", html)
+        self.assertIn("RESET_RECOMMEND_PROFILE", html)
+        self.assertIn("function reopenRecommendProfile", html)
+        self.assertIn("✅ 선택 정책:", html)
+        self.assertIn("lastEligibilityPolicyName", html)
+        additional_block = html[html.index("function showAdditionalQuestionCard"):html.index("let aqSelections")]
+        self.assertIn("프로필 다시 설정하기", additional_block)
+        self.assertIn("다른 정책 선택", additional_block)
+
+    def test_recommend_response_contains_profile_reset_action(self):
+        response = agent.format_recommend_response([], [], 0, 0, interest="취업")
+        self.assertIn("RESET_RECOMMEND_PROFILE", response)
 
 
 if __name__ == "__main__":

@@ -416,6 +416,7 @@ function formatResponse(text) {
     // 과거 응답/세션에 남은 구형 토큰도 계속 동작한다.
     html = html.replace(/\[ACTION_BTN:RESET_PROFILE:([^\]]+)\]/g, '<button class="elig-btn" onclick="resetAndShowFullCard(this)">👤 $1</button>');
     html = html.replace(/\[ACTION_BTN:RESET_CHAT:([^\]]+)\]/g, '<button class="elig-btn" onclick="resetChat()">🔄 $1</button>');
+    html = html.replace(/\[ACTION_BTN:RESET_RECOMMEND_PROFILE:([^\]]+)\]/g, '<button class="elig-btn" onclick="reopenRecommendProfile(this)">👤 $1</button>');
     html = html.replace(/\[ACTION_BTN:SHOW_ALTERNATIVES:([^\]]+)\]/g, '<button class="elig-btn" onclick="showAlternatives()">$1</button>');
     html = html.replace(/\[ACTION_BTN:NORMAL_EXPLAIN:([^\]]+)\]/g, '<button class="elig-btn" onclick="startExplain()">📋 $1</button>');
     html = html.replace(/\[ACTION_BTN:NORMAL_RECOMMEND:([^\]]+)\]/g, '<button class="elig-btn" onclick="startRecommend()">🎯 $1</button>');
@@ -669,8 +670,12 @@ function showRecommendProfileCard() {
     ];
 
     const ageVal = pcSelections.age || '';
+    const interestLabel = pendingInterest && pendingInterest.trim() ? pendingInterest.trim() : '전체';
     let html = `
         <div class="chat-card-title">🎯 추천 조건 확인</div>
+        <div style="font-size:13px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:9px 11px;margin-bottom:12px;">
+            📌 관심 분야: <strong>${escapeHtml(interestLabel)}</strong>
+        </div>
         <div class="pc-field">
             <div class="pc-label">만 나이</div>
             <div class="pc-age-box">
@@ -759,6 +764,13 @@ async function submitRecommendProfile(btn) {
     } catch(e) { hideTyping(); addBotMessage("오류가 발생했어요. 다시 시도해주세요."); }
     isWaiting = false;
     document.getElementById('sendBtn').disabled = false;
+}
+
+function reopenRecommendProfile(btn) {
+    if (btn) btn.disabled = true;
+    deactivateAllCards();
+    addBotMessage('현재 관심 분야는 유지하고 추천 조건을 다시 확인해주세요. 기존 프로필 값이 미리 선택되어 있어요.');
+    showRecommendProfileCard();
 }
 
 async function exploreWithoutProfile(btn) {
@@ -853,6 +865,7 @@ function renderResponseWithCard(data) {
             pendingInterest = '';
             lastMissingFields = null;
             lastEligibilityPolicyId = null;
+            lastEligibilityPolicyName = '';
             lastEligibilityFields = [];
             profileResumePolicyId = null;
             serverProfile = st.profile || {};
@@ -876,6 +889,9 @@ function renderResponseWithCard(data) {
     }
     if (st.eligibility_policy_id) {
         lastEligibilityPolicyId = st.eligibility_policy_id;
+    }
+    if (st.eligibility_policy_name) {
+        lastEligibilityPolicyName = st.eligibility_policy_name;
     }
     if (Array.isArray(st.eligibility_profile_fields) && st.eligibility_profile_fields.length > 0) {
         lastEligibilityFields = [...st.eligibility_profile_fields];
@@ -1122,8 +1138,13 @@ function showProfileCard(onlyFields) {
         }
     }
 
+    const eligibilityContext = isPartial && lastEligibilityPolicyName
+        ? `<div style="font-size:13px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:9px 11px;margin-bottom:12px;">✅ 선택 정책: <strong>${escapeHtml(lastEligibilityPolicyName)}</strong></div>`
+        : '';
+
     card.innerHTML = `
         <div class="chat-card-title">${title}</div>
+        ${eligibilityContext}
         ${fieldsHtml}
         ${!isPartial ? '<button class="chat-card-btn" onclick="submitProfileCard(this)">입력 완료</button>' : '<div style="display:flex;gap:8px;margin-top:10px;"><button class="chat-card-btn" style="background:#7c3aed;flex:1;" onclick="manualSubmitEligibility(this)">완료</button><button class="chat-card-btn" style="background:#f8f8f8;color:#666;border:1px solid #ddd;flex:1;" onclick="resetAndShowFullCard(this)">프로필 다시 입력</button></div>'}
         ${!isPartial ? '<button class="chat-card-btn" style="background:#eee;color:#1a5276;margin-top:6px;" onclick="skipProfile(this)">조건 없이 추천받기</button>' : ''}
@@ -1302,6 +1323,8 @@ function onClarifyPolicySelected(btn) {
 function showAdditionalQuestionCard(aq) {
     aqSelections = {};
     currentAqPolicyId = aq.policy_id || null;
+    const policyName = aq.policy_name || lastEligibilityPolicyName || '';
+    if (policyName) lastEligibilityPolicyName = policyName;
     const container = document.getElementById('chatMessages');
     const card = document.createElement('div');
     card.className = 'chat-card';
@@ -1330,8 +1353,16 @@ function showAdditionalQuestionCard(aq) {
         `;
     });
 
+    const policyContext = policyName
+        ? `<div style="font-size:13px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 11px;margin-bottom:10px;">✅ 선택 정책: <strong>${escapeHtml(policyName)}</strong></div>`
+        : '';
     card.innerHTML = `
         <div class="chat-card-title">📝 추가 자격 조건 확인</div>
+        ${policyContext}
+        <div style="display:flex;gap:8px;margin-bottom:12px;">
+            <button type="button" class="chat-card-btn" style="background:#f8f8f8;color:#555;border:1px solid #ddd;flex:1;margin:0;" onclick="resetAndShowFullCard('${aq.policy_id || ''}', this)">프로필 다시 설정하기</button>
+            <button type="button" class="chat-card-btn" style="background:#f8f8f8;color:#555;border:1px solid #ddd;flex:1;margin:0;" onclick="startEligibility()">다른 정책 선택</button>
+        </div>
         <div style="font-size:13px;color:#64748b;margin:2px 0 12px;">
             전체 ${total}개 중 ${batchStart}~${batchEnd}번 · ${remaining}개 남음
         </div>
@@ -1475,6 +1506,7 @@ function resetAndShowFullCard(policyIdOrBtn, maybeBtn) {
 // 마지막으로 표시한 missing_fields 저장
 let lastMissingFields = null;
 let lastEligibilityPolicyId = null;
+let lastEligibilityPolicyName = '';
 let lastEligibilityFields = [];
 let profileResumePolicyId = null;
 

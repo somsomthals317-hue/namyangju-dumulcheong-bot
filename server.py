@@ -304,6 +304,18 @@ def _navigation_ui_command(state, message, inferred_action):
 
 
 def public_state(state):
+    eligibility_policy_id = (
+        state.get("_eligibility_policy_id")
+        or state.get("selected_policy_id")
+        or state.get("current_policy_id")
+    )
+    eligibility_policy_name = next(
+        (
+            bundle.get("policy_name") for bundle in bundles
+            if bundle.get("policy_id") == eligibility_policy_id
+        ),
+        None,
+    )
     return {
         "focus_policy_id": state.get("focus_policy_id"),
         "profile_status": state.get("profile_status"),
@@ -318,6 +330,7 @@ def public_state(state):
         "recommendation_mode": state.get("_last_recommendation_mode"),
         "eligibility_mode": state.get("_last_eligibility_mode"),
         "eligibility_policy_id": state.get("_eligibility_policy_id"),
+        "eligibility_policy_name": eligibility_policy_name,
         "eligibility_profile_fields": state.get("_eligibility_profile_fields", []),
         "current_topic": state.get("current_topic"),
         "current_policy_id": state.get("current_policy_id"),
@@ -448,11 +461,9 @@ async def chat(request: Request):
             if inferred_action:
                 input_action = inferred_action
 
-        # 새 정책의 자격조회는 기존 공통 Profile 값을 기억하되 카드 자체는
-        # 항상 다시 확인한다. 필요한 필드를 잠시 비워 Workflow를 멈춘 뒤,
-        # 응답 직전에 원래 값을 복원하여 프론트 카드의 prefill로 사용한다.
-        eligibility_profile_snapshot = None
-        eligibility_needed_fields = []
+        # 새 정책 자격조회는 세션 공통 Profile을 그대로 재사용한다.
+        # 필요한 기본 Profile이 이미 있으면 곧바로 정책별 Additional Question으로
+        # 진행하고, 실제로 비어 있는 필드만 Agent가 CLARIFY_PROFILE로 요청한다.
         if isinstance(input_action, dict) and not profile_data and not ui_event:
             action_kind = input_action.get("action")
             action_tasks = input_action.get("tasks") or []
@@ -470,16 +481,8 @@ async def chat(request: Request):
                 if target_bundle:
                     input_action = dict(input_action)
                     input_action["policy_id"] = target_policy
-                    eligibility_needed_fields = get_policy_needed_fields(target_bundle)
-                    eligibility_profile_snapshot = {
-                        field: state.get("profile", {}).get(field)
-                        for field in eligibility_needed_fields
-                    }
-                    for field in eligibility_needed_fields:
-                        if field in state.get("profile", {}):
-                            state["profile"][field] = None
-                    state["profile_status"] = get_profile_status(state["profile"])
-                    # 새 자격조회 단위는 그 정책의 과거 추가질문 답변을 재사용하지 않는다.
+                    # 새 자격조회 단위에서는 해당 정책의 과거 Additional 답변만 초기화한다.
+                    # 공통 Profile은 보존하여 버튼/자연어 진입 결과를 동일하게 만든다.
                     state.setdefault("policy_answers", {}).pop(target_policy, None)
 
         # Profile 업데이트가 있으면 handle_turn 전에 반드시 적용
@@ -563,32 +566,16 @@ async def chat(request: Request):
             state["active_clarify"] = None
             state["_skip_profile_check"] = True
 
-        try:
-            async with agent_slots:
-                state, response = await run_in_threadpool(
-                    handle_turn,
-                    state,
-                    message,
-                    collection,
-                    bundles,
-                    ui_event,
-                    input_action,
-                )
-        finally:
-            # 새 자격조회 시작 전에 잠시 비웠던 공통 Profile은 항상 복원한다.
-            # Workflow는 CLARIFY_PROFILE에서 멈춰 있으므로 사용자는 값을 확인/수정한 뒤 제출한다.
-            if eligibility_profile_snapshot is not None:
-                for field, value in eligibility_profile_snapshot.items():
-                    if field in state.get("profile", {}):
-                        state["profile"][field] = value
-                state["profile_status"] = get_profile_status(state["profile"])
-                if (
-                    state.get("active_clarify") == "CLARIFY_PROFILE"
-                    and "ELIGIBILITY" in state.get("pending_tasks", [])
-                ):
-                    # Agent의 3개 단위 배치 제한 대신 이 정책이 실제 사용하는
-                    # 기본 Profile 필드를 한 카드에 모두 보여준다.
-                    state["_missing_fields"] = list(eligibility_needed_fields)
+        async with agent_slots:
+            state, response = await run_in_threadpool(
+                handle_turn,
+                state,
+                message,
+                collection,
+                bundles,
+                ui_event,
+                input_action,
+            )
 
         sessions[session_id] = state
         session_last_seen[session_id] = time.monotonic()
@@ -627,11 +614,15 @@ async def get_policies():
         {"policy_id": d["policy_id"], "policy_name": d["policy_name"]}
         for d in summary_docs if d.get("service_type") in {"INFORMATION", "FACILITY"}
     ]
+    eligibility_ids = {
+        bundle.get("policy_id") for bundle in bundles
+        if bundle.get("eligibility_mode") != "INFO_ONLY"
+    }
     return JSONResponse({
         "policies": all_policies,
         "eligibility_policies": [
             item for item in all_policies
-            if item["policy_id"].startswith("NYJ-YOUTH-")
+            if item["policy_id"] in eligibility_ids
         ],
         "explain_only": info_only,
     })
